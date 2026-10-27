@@ -1,6 +1,6 @@
 import type { KnowledgeDoc, Product } from "@/lib/types";
 
-/** 상품 Q&A 대상 상품 (대분류 → 소분류) */
+/** 지식 챗봇 상품 (대분류 → 소분류) */
 export const PRODUCTS: Product[] = [
   { id: "p2", name: "평생 종신보험 (가상)", category: "종신보험" },
   { id: "p5", name: "우리가족 종신보험 (가상)", category: "종신보험" },
@@ -18,7 +18,26 @@ export const KNOWLEDGE_DOCS: KnowledgeDoc[] = [
   { id: "d8", productId: "p6", title: "3대질병 암보험 약관", docType: "약관", version: "2026.01", effectiveFrom: "2026-01-01", status: "게시", pages: 74 },
   { id: "d9", productId: "p4", title: "우리아이 튼튼 어린이보험 약관", docType: "약관", version: "2026.03", effectiveFrom: "2026-03-01", status: "게시", pages: 92 },
   { id: "d6", productId: "common", title: "신입 FC 업무지침", docType: "업무지침", version: "v1.2", effectiveFrom: "2026-07-01", status: "게시", pages: 40 },
+  { id: "d10", productId: "common", title: "보험 용어·개념 해설집", docType: "업무지침", version: "2026.1", effectiveFrom: "2026-01-01", status: "게시", pages: 32 },
 ];
+
+/** 상품 비교·추천용 요약 정보 (가상). 출처는 각 상품 약관 */
+export interface ProductSpec {
+  coverage: string;
+  joinAge: string;
+  renewal: string;
+  point: string;
+  /** 추천 후보를 고를 때 쓰는 키워드 */
+  needs: string[];
+}
+
+export const PRODUCT_SPECS: Record<string, ProductSpec> = {
+  p2: { coverage: "사망 평생 보장", joinAge: "15~60세", renewal: "비갱신형", point: "장해 50% 이상 시 납입면제", needs: ["가족", "사망", "상속", "가장"] },
+  p5: { coverage: "사망 평생 보장", joinAge: "15~65세", renewal: "비갱신형", point: "납입기간 10·20·30년 선택", needs: ["가족", "사망", "가장", "부담"] },
+  p1: { coverage: "암 진단비", joinAge: "15~70세", renewal: "갱신형 특약 포함", point: "90일 면책, 1년 내 50% 감액", needs: ["암", "진단비"] },
+  p6: { coverage: "암·뇌·심장 진단비", joinAge: "20~65세", renewal: "비갱신형", point: "질병별 최초 1회, 유사암 20%", needs: ["암", "뇌", "심장", "3대", "중대"] },
+  p4: { coverage: "자녀 질병·상해", joinAge: "0~15세 (태아 가능)", renewal: "비갱신형", point: "30세·100세 만기 선택, 골절 보장", needs: ["자녀", "아이", "아기", "태아", "어린이"] },
+};
 
 /** RAG 검색 대상 문단 (가상 내용). 백엔드 연동 시 벡터 검색으로 대체 */
 export interface KnowledgeChunk {

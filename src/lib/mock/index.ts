@@ -4,6 +4,7 @@ import { KNOWLEDGE_DOCS } from "./knowledge";
 
 export * from "./contracts";
 export * from "./customers";
+export * from "./glossary";
 export * from "./knowledge";
 export * from "./records";
 export * from "./schedule";

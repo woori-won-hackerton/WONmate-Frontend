@@ -8,6 +8,7 @@ import { NAV_ITEMS } from "@/constants/nav";
 import { useMounted } from "@/hooks/useMounted";
 import { useAuthStore, useCurrentUser } from "@/lib/auth";
 import { logout } from "@/lib/authApi";
+import { confirmDialog, toast } from "@/lib/feedback";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
@@ -113,10 +114,25 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
   const resetDemo = useAppStore((s) => s.resetDemo);
 
   const handleLogout = async () => {
-    if (!confirm("로그아웃할까요?")) return;
+    onNavigate?.();
+    const ok = await confirmDialog({ title: "로그아웃할까요?", confirmText: "로그아웃" });
+    if (!ok) return;
     await logout();
     signOut();
     router.replace("/login");
+  };
+
+  const handleReset = async () => {
+    onNavigate?.();
+    const ok = await confirmDialog({
+      title: "데모 데이터를 초기화할까요?",
+      description: "추가한 일정·할 일·상담 기록이 모두 처음 상태로 돌아가요.",
+      confirmText: "초기화",
+      tone: "danger",
+    });
+    if (!ok) return;
+    resetDemo();
+    toast.success("데모 데이터를 처음 상태로 되돌렸어요");
   };
 
   return (
@@ -168,36 +184,36 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
           이용 가이드 다시 보기
         </Link>
 
-        <div className="flex items-center gap-3 rounded-2xl bg-surface p-3">
-          <div className="grid size-10 shrink-0 place-items-center rounded-full bg-linear-to-br from-brand-500 to-sky-accent text-sm font-bold text-white">
-            {user.name.slice(0, 1)}
+        <div className="rounded-2xl bg-surface p-3">
+          <div className="flex items-center gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-linear-to-br from-brand-500 to-sky-accent text-sm font-bold text-white">
+              {user.name.slice(0, 1)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold text-ink">{user.name} FC</p>
+              <p className="truncate text-xs text-muted">
+                {user.branch} · {user.tenureMonth}개월차
+              </p>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-ink">{user.name} FC</p>
-            <p className="truncate text-xs text-muted">
-              {user.branch} · {user.tenureMonth}개월차
-            </p>
+          <div className="mt-3 grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={handleReset}
+              className="flex h-8 items-center justify-center gap-1 rounded-xl bg-white text-xs font-semibold text-sub transition hover:text-ink"
+            >
+              <RotateCcw className="size-3.5" />
+              데모 초기화
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex h-8 items-center justify-center gap-1 rounded-xl bg-white text-xs font-semibold text-sub transition hover:text-rose-500"
+            >
+              <LogOut className="size-3.5" />
+              로그아웃
+            </button>
           </div>
-          <button
-            type="button"
-            title="데모 데이터 초기화"
-            aria-label="데모 데이터 초기화"
-            onClick={() => {
-              if (confirm("데모 데이터를 처음 상태로 되돌릴까요?")) resetDemo();
-            }}
-            className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-sub"
-          >
-            <RotateCcw className="size-4" />
-          </button>
-          <button
-            type="button"
-            title="로그아웃"
-            aria-label="로그아웃"
-            onClick={handleLogout}
-            className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-rose-500"
-          >
-            <LogOut className="size-4" />
-          </button>
         </div>
       </div>
     </>

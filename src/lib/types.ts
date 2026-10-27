@@ -125,7 +125,7 @@ export interface ScheduleItem {
   done: boolean;
 }
 
-/** 상품 Q&A 대분류 */
+/** 상품 대분류 (지식 챗봇 상품 선택용) */
 export type ProductCategory = "종신보험" | "암보험" | "어린이보험";
 
 export const PRODUCT_CATEGORIES: ProductCategory[] = ["종신보험", "암보험", "어린이보험"];
@@ -157,11 +157,30 @@ export interface QaSource {
   page: number;
 }
 
-export type QaStatus = "answered" | "needs_review" | "insufficient";
+/** 지식 챗봇 질문 유형 */
+export type QuestionType = "term" | "concept" | "product" | "compare" | "recommend";
+
+export const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
+  term: "용어 설명",
+  concept: "개념 설명",
+  product: "상품 설명",
+  compare: "상품 비교",
+  recommend: "상품 추천",
+};
+
+/** answered = 근거 확인 / needs_review = 확정 불가 / insufficient = 근거 부족 / reference = 참고용(FC 판단 필요) */
+export type QaStatus = "answered" | "needs_review" | "insufficient" | "reference";
+
+export interface QaTable {
+  headers: string[];
+  rows: string[][];
+}
 
 export interface QaAnswer {
   status: QaStatus;
   answer: string;
+  /** 상품 비교·추천 결과 표 */
+  table?: QaTable;
   conditions: string[];
   cautions: string[];
   sources: QaSource[];
@@ -171,6 +190,9 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
+  qType?: QuestionType;
+  /** 상품 설명 질문일 때 선택한 상품명 */
+  productName?: string;
   answer?: QaAnswer;
 }
 

@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KNOWLEDGE_DOCS } from "@/lib/mock";
 import type { KnowledgeDoc } from "@/lib/types";
+import { toast } from "@/lib/feedback";
 import { cn, inputClass } from "@/lib/utils";
 
 export default function LibraryPage() {
@@ -20,18 +21,18 @@ export default function LibraryPage() {
 
   const openDoc = (doc: KnowledgeDoc) => {
     // 백엔드 연동 후: window.open(문서 파일 URL, "_blank")
-    alert(`'${doc.title}' 문서는 백엔드 연동 후 열 수 있어요. (데모)`);
+    toast.info(`'${doc.title}' 문서는 백엔드 연동 후 열 수 있어요`);
   };
 
   return (
     <div>
       <PageHeader
         title="지식 자료실"
-        description="상품 Q&A가 참고하는 약관·상품설명서·업무지침이에요."
+        description="지식 챗봇이 참고하는 약관·상품설명서·업무지침이에요."
         actions={
           <Button
             variant="outline"
-            onClick={() => alert("문서 등록은 지식 관리자 권한으로 백엔드 연동 후 제공돼요. (데모)")}
+            onClick={() => toast.info("문서 등록은 백엔드 연동 후 지식 관리자에게 열려요")}
           >
             <Upload className="size-4" />
             문서 등록

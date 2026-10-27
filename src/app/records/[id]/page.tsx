@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { CalendarPlus, CheckCircle2, ChevronLeft, FileCheck2, FileX, NotebookPen, Sparkles } from "lucide-react";
+import {
+  CalendarPlus,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  FileCheck2,
+  FileX,
+  NotebookPen,
+  Sparkles,
+} from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -11,11 +20,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Notice } from "@/components/ui/Notice";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
-import { useCurrentUser } from "@/lib/auth";
 import { draftRecordSummary } from "@/lib/api";
+import { useCurrentUser } from "@/lib/auth";
+import { confirmDialog, toast } from "@/lib/feedback";
 import { findCustomer } from "@/lib/mock";
 import { useAppStore } from "@/lib/store";
-import { CONSULT_TYPE_LABEL, RECORD_STATUS_LABEL, type RecordSummary } from "@/lib/types";
+import { CONSULT_TYPE_LABEL, type RecordStatus, type RecordSummary } from "@/lib/types";
 import { addDays, cn, formatDate, formatDateTime, inputClass } from "@/lib/utils";
 
 const FIELDS: { key: keyof RecordSummary; label: string; hint: string }[] = [
@@ -25,6 +35,41 @@ const FIELDS: { key: keyof RecordSummary; label: string; hint: string }[] = [
   { key: "unresolved", label: "미해결 사항", hint: "확인이 더 필요한 것" },
   { key: "nextActions", label: "다음 행동", hint: "누가, 언제까지, 무엇을" },
 ];
+
+const STEPS: { status: RecordStatus; label: string }[] = [
+  { status: "memo", label: "메모 저장" },
+  { status: "ai_draft", label: "AI 초안" },
+  { status: "confirmed", label: "기록 확정" },
+];
+
+/** 메모 → AI 초안 → 확정 진행 단계 */
+function StatusSteps({ status }: { status: RecordStatus }) {
+  const current = STEPS.findIndex((s) => s.status === status);
+  return (
+    <ol className="flex items-center gap-1.5">
+      {STEPS.map((s, i) => {
+        const done = i < current || status === "confirmed";
+        const active = i === current;
+        return (
+          <li key={s.status} className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                "flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition",
+                active && status !== "confirmed" && "bg-brand-600 text-white",
+                done && "bg-emerald-50 text-emerald-700",
+                !active && !done && "bg-gray-100 text-muted",
+              )}
+            >
+              {done && <Check className="size-3" strokeWidth={3} />}
+              {s.label}
+            </span>
+            {i < STEPS.length - 1 && <span className="h-px w-3 bg-line" />}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 export default function RecordDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -38,7 +83,6 @@ export default function RecordDetailPage() {
   const [generating, setGenerating] = useState(false);
   const [followDate, setFollowDate] = useState(addDays(7));
   const [followTitle, setFollowTitle] = useState("");
-  const [followSaved, setFollowSaved] = useState(false);
 
   if (!mounted) return <LoadingBlock />;
 
@@ -61,44 +105,51 @@ export default function RecordDetailPage() {
     try {
       const next = await draftRecordSummary(record.memo);
       updateRecord(record.id, { summary: next, status: "ai_draft" });
+      toast.success("AI 초안을 만들었어요. 내용을 확인해 주세요");
+    } catch {
+      toast.error("AI 초안을 만들지 못했어요. 잠시 후 다시 시도해 주세요");
     } finally {
       setGenerating(false);
     }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!summary) return;
-    if (!confirm("확정하면 수정할 수 없어요. 실제 상담 내용과 일치하는지 확인하셨나요?")) return;
+    const ok = await confirmDialog({
+      title: "기록을 확정할까요?",
+      description: "확정하면 수정할 수 없어요. 실제 상담 내용과 일치하는지 확인해 주세요.",
+      confirmText: "확정하기",
+    });
+    if (!ok) return;
     confirmRecord(record.id, user.name);
+    toast.success("상담 기록을 확정했어요");
   };
 
   const handleFollowUp = () => {
-    addScheduleItem({
-      kind: "task",
-      title: followTitle.trim() || `${customer?.name ?? ""} 고객 후속 연락`,
-      date: followDate,
-      customerId: record.customerId,
-      done: false,
-    });
-    setFollowSaved(true);
+    const title = followTitle.trim() || `${customer?.name ?? ""} 고객 후속 연락`;
+    addScheduleItem({ kind: "task", title, date: followDate, customerId: record.customerId, done: false });
     setFollowTitle("");
+    toast.success(`'${title}' 할 일을 ${formatDate(followDate)}에 등록했어요`);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="animate-rise space-y-5 lg:space-y-6">
       <Link href="/records" className="inline-flex items-center gap-1 text-sm font-semibold text-sub hover:text-ink">
         <ChevronLeft className="size-4" />
         상담 기록
       </Link>
 
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold">{customer?.name ?? "알 수 없음"} 고객 상담 기록</h1>
-          <Badge tone="brand">{CONSULT_TYPE_LABEL[record.type]}</Badge>
-          <Badge tone={isConfirmed ? "green" : "sky"}>{RECORD_STATUS_LABEL[record.status]}</Badge>
+      {/* 헤더 */}
+      <Card className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-extrabold tracking-tight text-ink">{customer?.name ?? "알 수 없음"} 고객</h1>
+            <Badge tone="brand">{CONSULT_TYPE_LABEL[record.type]}</Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted">{formatDate(record.date, true)} 상담</p>
         </div>
-        <p className="mt-1 text-sm text-muted">{formatDate(record.date, true)}</p>
-      </div>
+        <StatusSteps status={record.status} />
+      </Card>
 
       {isConfirmed ? (
         <Notice tone="green">
@@ -111,11 +162,11 @@ export default function RecordDetailPage() {
         </Notice>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
         <Card>
           <CardHeader icon={NotebookPen} title="저장한 상담 메모" right={<Badge>원문</Badge>} />
           {isConfirmed ? (
-            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-ink">
+            <pre className="whitespace-pre-wrap rounded-2xl bg-surface p-4 font-sans text-sm leading-relaxed text-ink">
               {record.memo || "메모 없음"}
             </pre>
           ) : (
@@ -147,19 +198,19 @@ export default function RecordDetailPage() {
             right={summary && !isConfirmed ? <Badge tone="sky">AI 초안 · 수정 가능</Badge> : undefined}
           />
           {!summary ? (
-            <div className="grid min-h-48 place-items-center text-center text-sm text-muted">
-              메모를 바탕으로 AI 초안을 만들어 주세요.
+            <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-line text-center text-sm text-muted">
+              왼쪽 메모로 AI 초안을 만들어 주세요.
             </div>
           ) : (
             <div className="space-y-4">
               {FIELDS.map((f) => (
                 <label key={f.key} className="block">
-                  <span className="mb-1 flex items-center justify-between text-sm font-bold text-sub">
+                  <span className="mb-1.5 flex items-center justify-between text-sm font-bold text-sub">
                     {f.label}
                     {!summary[f.key] && <Badge tone="amber">메모에 없음</Badge>}
                   </span>
                   {isConfirmed ? (
-                    <p className="whitespace-pre-wrap rounded-xl bg-surface p-3 text-sm text-ink">
+                    <p className="whitespace-pre-wrap rounded-2xl bg-surface p-3 text-sm text-ink">
                       {summary[f.key] || "—"}
                     </p>
                   ) : (
@@ -187,8 +238,8 @@ export default function RecordDetailPage() {
       </div>
 
       <Card>
-        <CardHeader icon={CalendarPlus} title="후속 일정 등록" />
-        <div className="grid gap-3 md:grid-cols-[180px_1fr_auto]">
+        <CardHeader icon={CalendarPlus} title="후속 할 일 등록" />
+        <div className="grid gap-2 md:grid-cols-[180px_1fr_auto]">
           <input
             type="date"
             value={followDate}
@@ -201,16 +252,9 @@ export default function RecordDetailPage() {
             placeholder={`${customer?.name ?? ""} 고객 후속 연락`}
             className={inputClass}
           />
-          <Button onClick={handleFollowUp}>일정 등록</Button>
+          <Button onClick={handleFollowUp}>등록</Button>
         </div>
-        {followSaved && (
-          <Notice tone="green" className="mt-3">
-            후속 일정을 등록했어요.{" "}
-            <Link href="/" className="font-semibold underline">
-              홈의 해야 할 일에서 보기
-            </Link>
-          </Notice>
-        )}
+        <p className="mt-2 text-xs text-muted">등록한 할 일은 홈의 ‘해야 할 일’에 나와요.</p>
       </Card>
     </div>
   );

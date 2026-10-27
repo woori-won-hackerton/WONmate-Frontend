@@ -4,6 +4,7 @@ import { useState } from "react";
 import { BookUser, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { toast } from "@/lib/feedback";
 import { useAppStore } from "@/lib/store";
 import { cn, formatDateTime, inputClass } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ export function CustomerWiki({ customerId }: { customerId: string }) {
   const handleSave = () => {
     saveWiki(customerId, draft.trim());
     setEditing(false);
+    toast.success("고객 위키를 저장했어요");
   };
 
   return (

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
+import { FeedbackHost } from "@/components/ui/FeedbackHost";
 
 export const metadata: Metadata = {
   title: "WONmate",
@@ -28,6 +29,7 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         <AppShell>{children}</AppShell>
+        <FeedbackHost />
       </body>
     </html>
   );

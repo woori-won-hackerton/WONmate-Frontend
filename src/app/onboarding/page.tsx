@@ -15,9 +15,9 @@ const STEPS = [
     visual: <BriefingVisual />,
   },
   {
-    eyebrow: "상품 Q&A",
-    title: "약관 근거로만\n답해요",
-    desc: "답변마다 근거 페이지를 보여주고, 근거가 없으면 답을 보류해요.",
+    eyebrow: "지식 챗봇",
+    title: "근거 있는 답만\n알려줘요",
+    desc: "용어·개념부터 상품 설명·비교까지, 근거 문서와 함께 답하고 근거가 없으면 보류해요.",
     visual: <QaVisual />,
   },
   {

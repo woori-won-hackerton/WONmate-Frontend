@@ -110,7 +110,7 @@ export function ExpectedQuestions({
                       onChange(qa.map((q, idx) => (idx === i ? { ...q, answerMemo: e.target.value } : q)))
                     }
                     rows={3}
-                    placeholder="예상 답변을 메모해 두세요. 약관 근거가 필요하면 상품 Q&A에서 확인하세요."
+                    placeholder="예상 답변을 메모해 두세요. 약관 근거가 필요하면 지식 챗봇에서 확인하세요."
                     className={cn(inputClass, "resize-y")}
                   />
                 </div>

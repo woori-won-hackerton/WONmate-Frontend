@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CalendarPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { CUSTOMERS, findCustomer } from "@/lib/mock";
+import { toast } from "@/lib/feedback";
 import { useAppStore } from "@/lib/store";
 import { CONSULT_TYPE_LABEL, CONSULT_TYPES, type ConsultType } from "@/lib/types";
 import { cn, inputClass } from "@/lib/utils";
@@ -42,6 +43,7 @@ export function AddConsultDialog({ defaultDate, defaultCustomerId = "", onClose,
     });
     onAdded?.(id);
     onClose();
+    toast.success(`${customer.name} 고객 상담 일정을 추가했어요`);
   };
 
   return (
