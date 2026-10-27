@@ -1,28 +1,18 @@
 /**
  * AI 처리 계층
- * - 지금은 프론트 단독 데모용 mock 구현
- * - 백엔드 준비 후 각 함수 안을 fetch(`${API_BASE}/...`)로 교체
+ * - AI 브리핑: POST /api/consults/{id}/briefing
+ * - AI 상담 요약 초안: lib/data.ts 의 generateAiRecord (POST /api/consults/{id}/ai-record)
+ * - AI 챗봇: BACKEND_READY.chat 이 true면 백엔드, 아니면 mock (백엔드 API 준비 중)
  * - 화면 컴포넌트는 이 파일의 함수 시그니처에만 의존
  */
+import { backendApi } from "@/lib/backend";
+import { BACKEND_READY } from "@/lib/config";
+import { apiRequest } from "@/lib/http";
 import { findDoc, GLOSSARY, GLOSSARY_DOC_ID, KNOWLEDGE_CHUNKS, PRODUCTS, type KnowledgeChunk } from "@/lib/mock";
-import {
-  CONSULT_TYPE_LABEL,
-  type Briefing,
-  type ChatRequest,
-  type ChatResponse,
-  type ChatSource,
-  type ConsultationRecord,
-  type ConsultType,
-  type Contract,
-  type Customer,
-  type DocType,
-  type RecordSummary,
-} from "@/lib/types";
-import { addDays, formatDate, sleep } from "@/lib/utils";
+import type { Briefing, ChatRequest, ChatResponse, ChatSource, ConsultType, DocType } from "@/lib/types";
+import { sleep } from "@/lib/utils";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-const MODEL_VERSION = "mock-briefing-v0.1";
-
+/** 예상 질문 — 백엔드가 아직 만들지 않아서 상담 종류별 고정값 */
 const QUESTIONS_BY_TYPE: Record<ConsultType, string[]> = {
   new: ["지금 꼭 필요한 보험이 뭐예요?", "보험료는 한 달에 얼마 정도가 적당해요?", "다른 보험이랑 겹치는 건 없나요?"],
   review: ["지금 보험료를 줄일 방법이 있을까요?", "제 보험으로 암 진단비는 얼마 나와요?", "해지하면 손해인가요?"],
@@ -37,80 +27,26 @@ const ORDER_BY_TYPE: Record<ConsultType, string[]> = {
   claim: ["청구 내용 확인", "보장 조건 안내", "서류 안내", "접수 후 일정 안내"],
 };
 
-function firstLine(text: string) {
-  return text.split("\n")[0].replace(/^•\s*/, "").trim();
-}
+const FIXED_CAUTIONS = [
+  "전체 계약 확인 전에는 보장이 부족하다고 단정하지 않아요",
+  "보험금 지급 여부는 개별 심사 사항이라 확정해서 말하지 않아요",
+];
 
-interface BriefingInput {
-  customer: Customer;
-  contracts: Contract[];
-  history: ConsultationRecord[];
-  type: ConsultType;
-}
-
-/** PRE-02 고객 브리핑 생성 */
-export async function generateBriefing({ customer, contracts, history, type }: BriefingInput): Promise<Briefing> {
-  await sleep(2400);
-
-  const active = contracts.filter((c) => c.status !== "실효");
-  const last = history
-    .filter((r) => r.status === "confirmed")
-    .sort((a, b) => b.date.localeCompare(a.date))[0];
-
-  const summary = [
-    `${customer.age}세 ${customer.gender} · ${customer.job ?? "직업 확인되지 않음"}`,
-    customer.family ? `가족: ${customer.family}` : "가족관계: 확인되지 않음",
-    last
-      ? `최근 상담(${formatDate(last.date)}, ${CONSULT_TYPE_LABEL[last.type]}): ${firstLine(last.summary?.needs || last.memo)}`
-      : "이전 상담 기록 없음 — 첫 상담이에요",
-    active.length ? `보유 계약 ${active.length}건` : "보유 계약 없음",
-  ];
-  active
-    .filter((c) => c.renewalDate && c.renewalDate <= addDays(60))
-    .forEach((c) => summary.push(`갱신 예정: ${c.productName} (${formatDate(c.renewalDate)})`));
-  if (last?.summary?.unresolved) summary.push(`지난 상담에서 남은 일: ${firstLine(last.summary.unresolved)}`);
-
+/**
+ * AI 브리핑 생성
+ * - 요약(summary): 백엔드 AI가 고객 위키 + 완료된 이전 상담(메모 · AI 기록)으로 작성
+ * - 예상 질문 · 상담 순서 · 주의 문구: 상담 종류별 고정값
+ *   (백엔드가 주는 unconfirmedInformation · consultationTips 는 화면에서 뺐으므로 사용 안 함)
+ */
+export async function generateBriefing(scheduleId: string, type: ConsultType): Promise<Briefing> {
+  const res = await backendApi.generateBriefing(scheduleId);
   return {
-    summary,
+    summary: res.summary,
     expectedQuestions: QUESTIONS_BY_TYPE[type],
     order: ORDER_BY_TYPE[type],
-    cautions: [
-      "전체 계약 확인 전에는 보장이 부족하다고 단정하지 않아요",
-      "보험금 지급 여부는 개별 심사 사항이라 확정해서 말하지 않아요",
-    ],
+    cautions: FIXED_CAUTIONS,
     generatedAt: new Date().toISOString(),
-    modelVersion: MODEL_VERSION,
-  };
-}
-
-/** POST-02 상담 기록 초안 생성 — 메모에 없는 내용은 만들지 않음 */
-export async function draftRecordSummary(memo: string): Promise<RecordSummary> {
-  await sleep(2000);
-
-  const buckets: Record<keyof RecordSummary, string[]> = {
-    needs: [], explained: [], questions: [], unresolved: [], nextActions: [],
-  };
-
-  memo
-    .split("\n")
-    .map((line) => line.replace(/^[-•*]\s*/, "").trim())
-    .filter((line) => line && !/^\[.*\]$/.test(line))
-    .forEach((line) => {
-      if (/^Q[:.]/.test(line) || /\?|문의|질문/.test(line)) buckets.questions.push(line.replace(/^Q[:.]\s*/, ""));
-      else if (/확인 필요|미정|모름|보류/.test(line)) buckets.unresolved.push(line);
-      else if (/다음|예정|까지|연락|발송|보내/.test(line)) buckets.nextActions.push(line);
-      else if (/^A[:.]/.test(line) || /설명|안내/.test(line)) buckets.explained.push(line.replace(/^A[:.]\s*/, ""));
-      else buckets.needs.push(line);
-    });
-
-  const format = (lines: string[]) => lines.map((l) => `• ${l}`).join("\n");
-
-  return {
-    needs: format(buckets.needs),
-    explained: format(buckets.explained),
-    questions: format(buckets.questions),
-    unresolved: format(buckets.unresolved),
-    nextActions: format(buckets.nextActions),
+    modelVersion: "WONmate AI",
   };
 }
 
@@ -125,23 +61,13 @@ export const CHAT_TOP_K = 5;
 const CHAT_PATH = "/api/chat";
 
 /**
- * 지식 챗봇 질문
- * - NEXT_PUBLIC_API_BASE_URL이 있으면 백엔드 호출, 없으면 mock
+ * AI 챗봇 질문
+ * - BACKEND_READY.chat 이 true면 백엔드 호출, 아니면 mock
  * - 응답이 { isSuccess, result } 로 감싸져 와도, 그대로 와도 처리
  */
 export async function askKnowledge(req: ChatRequest): Promise<ChatResponse> {
-  if (API_BASE) {
-    const res = await fetch(`${API_BASE}${CHAT_PATH}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(req),
-    });
-    const json = await res.json();
-    if (!res.ok || json?.isSuccess === false) {
-      throw new Error(json?.message ?? "챗봇 응답을 가져오지 못했어요.");
-    }
-    return (json?.result ?? json) as ChatResponse;
+  if (BACKEND_READY.chat) {
+    return apiRequest<ChatResponse>(CHAT_PATH, { method: "POST", body: req });
   }
   return mockAskKnowledge(req);
 }

@@ -7,7 +7,7 @@ import { TaskCard } from "@/components/home/TaskCard";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
 import { useCurrentUser } from "@/lib/auth";
-import { findCustomer } from "@/lib/mock";
+import { useConsultsOn, useCustomerLookup } from "@/lib/data";
 import { useAppStore } from "@/lib/store";
 import { CONSULT_TYPE_LABEL } from "@/lib/types";
 import { cn, formatDate, toLocalISODate } from "@/lib/utils";
@@ -16,18 +16,17 @@ export default function HomePage() {
   const mounted = useMounted();
   const schedule = useAppStore((s) => s.schedule);
   const user = useCurrentUser();
-
-  if (!mounted) return <LoadingBlock />;
-
   const today = toLocalISODate();
-  const todays = schedule
-    .filter((i) => i.kind === "consult" && i.date === today)
-    .sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""));
+  const { data: todays, isLoading } = useConsultsOn(today);
+  const customerOf = useCustomerLookup();
+
+  if (!mounted || isLoading) return <LoadingBlock />;
+
   const done = todays.filter((i) => i.done).length;
   const remaining = todays.length - done;
   const tasks = schedule.filter((i) => i.kind === "task" && !i.done && i.date <= today);
   const next = todays.find((i) => !i.done);
-  const nextCustomer = next?.customerId ? findCustomer(next.customerId) : undefined;
+  const nextCustomerName = next ? (customerOf(next.customerId)?.name ?? next.customerName) : undefined;
   const progress = todays.length ? Math.round((done / todays.length) * 100) : 0;
 
   const stats = [
@@ -60,7 +59,7 @@ export default function HomePage() {
           </span>
         </div>
 
-        {next && nextCustomer ? (
+        {next && nextCustomerName ? (
           <Link
             href={`/prep?scheduleId=${next.id}`}
             className="group relative mt-5 flex items-center justify-between gap-3 rounded-2xl bg-white/12 p-4 ring-1 ring-white/20 backdrop-blur transition hover:bg-white/20"
@@ -72,7 +71,7 @@ export default function HomePage() {
               <div className="min-w-0">
                 <p className="text-xs text-white/70">다음 상담</p>
                 <p className="mt-0.5 truncate font-bold">
-                  {nextCustomer.name} 고객 · {next.consultType ? CONSULT_TYPE_LABEL[next.consultType] : "상담"}
+                  {nextCustomerName} 고객 · {next.consultType ? CONSULT_TYPE_LABEL[next.consultType] : "상담"}
                 </p>
               </div>
             </div>

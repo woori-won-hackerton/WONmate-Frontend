@@ -11,12 +11,14 @@ import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadError } from "@/components/ui/LoadError";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
-import { contractsOf, findCustomer } from "@/lib/mock";
+import { ApiError } from "@/lib/http";
+import { useContracts, useCustomer, useUpcomingConsults } from "@/lib/data";
 import { useAppStore } from "@/lib/store";
 import { CONSULT_TYPE_LABEL, RECORD_STATUS_LABEL } from "@/lib/types";
-import { formatDate, toLocalISODate } from "@/lib/utils";
+import { formatAge, formatDate, toLocalISODate } from "@/lib/utils";
 
 function InfoTile({ label, value }: { label: string; value: string | null }) {
   return (
@@ -33,9 +35,17 @@ export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const mounted = useMounted();
   const records = useAppStore((s) => s.records);
-  const schedule = useAppStore((s) => s.schedule);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const customer = findCustomer(id);
+  const { data: customer, isLoading, error, reload } = useCustomer(id);
+  const contractsQuery = useContracts(customer?.id);
+  const { data: consults } = useUpcomingConsults();
+
+  if (!mounted || isLoading) return <LoadingBlock />;
+
+  // 404·403(담당 고객 아님)은 '찾을 수 없음', 그 밖의 오류는 다시 시도
+  if (error && !(error instanceof ApiError && [403, 404].includes(error.status))) {
+    return <LoadError error={error} onRetry={reload} title="고객 정보를 불러오지 못했어요" />;
+  }
 
   if (!customer) {
     return (
@@ -48,13 +58,11 @@ export default function CustomerDetailPage() {
     );
   }
 
-  if (!mounted) return <LoadingBlock />;
-
   const today = toLocalISODate();
-  const contracts = contractsOf(customer.id);
+  const contracts = contractsQuery.data;
   const history = records.filter((r) => r.customerId === customer.id).sort((a, b) => b.date.localeCompare(a.date));
-  const nextConsult = schedule
-    .filter((i) => i.kind === "consult" && i.customerId === customer.id && !i.done && i.date >= today)
+  const nextConsult = consults
+    .filter((i) => i.customerId === customer.id && !i.done && i.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""))[0];
 
   return (
@@ -74,7 +82,7 @@ export default function CustomerDetailPage() {
             <h1 className="flex flex-wrap items-baseline gap-2 text-2xl font-extrabold tracking-tight text-ink">
               {customer.name}
               <span className="text-base font-medium text-muted">
-                {customer.age}세 · {customer.gender}
+                {formatAge(customer.age)} · {customer.gender}
               </span>
             </h1>
             <p className="mt-1 text-sm text-sub">
@@ -89,9 +97,6 @@ export default function CustomerDetailPage() {
               ) : (
                 "예정된 상담이 없어요"
               )}
-            </p>
-            <p className="mt-0.5 text-xs text-muted">
-              출처 {customer.source} · 최종 갱신 {formatDate(customer.updatedAt)}
             </p>
           </div>
         </div>
@@ -124,9 +129,9 @@ export default function CustomerDetailPage() {
         <CardHeader
           icon={ShieldCheck}
           title="보유 계약"
-          right={<span className="text-sm text-muted">{contracts.length}건</span>}
+          right={!contractsQuery.isLoading && <span className="text-sm text-muted">{contracts.length}건</span>}
         />
-        <ContractList contracts={contracts} />
+        <ContractList contracts={contracts} loading={contractsQuery.isLoading} error={contractsQuery.error} />
       </Card>
 
       <Card>

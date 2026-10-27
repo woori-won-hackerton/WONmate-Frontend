@@ -7,10 +7,12 @@ import { AddConsultDialog } from "@/components/schedule/AddConsultDialog";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { findCustomer } from "@/lib/mock";
-import { useAppStore } from "@/lib/store";
-import { CONSULT_TYPE_LABEL } from "@/lib/types";
-import { cn, formatDate, relativeDayLabel, toLocalISODate } from "@/lib/utils";
+import { backendApi } from "@/lib/backend";
+import { useConsultActions, useConsultsOn, useCustomerLookup } from "@/lib/data";
+import { confirmDialog, toast } from "@/lib/feedback";
+import { composeMemo, useAppStore } from "@/lib/store";
+import { CONSULT_TYPE_LABEL, type ScheduleItem } from "@/lib/types";
+import { cn, formatAge, formatDate, relativeDayLabel, toLocalISODate } from "@/lib/utils";
 
 function shiftDate(iso: string, days: number) {
   const [y, m, d] = iso.split("-").map(Number);
@@ -19,16 +21,35 @@ function shiftDate(iso: string, days: number) {
 
 /** 홈: 날짜별 상담 일정 (◀ ▶ 이동) + 일정 추가 */
 export function ConsultScheduleCard() {
-  const schedule = useAppStore((s) => s.schedule);
-  const toggle = useAppStore((s) => s.toggleScheduleItem);
-
   const today = toLocalISODate();
   const [date, setDate] = useState(today);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const items = schedule
-    .filter((i) => i.kind === "consult" && i.date === date)
-    .sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""));
+  const { data: items, isLoading, error, reload } = useConsultsOn(date);
+  const { completeConsult } = useConsultActions();
+  const customerOf = useCustomerLookup();
+  const [completingId, setCompletingId] = useState<string | null>(null);
+
+  /** 상담 준비 화면을 거치지 않고 바로 완료 — 서버에 저장된 메모로 완료 처리 */
+  const handleComplete = async (item: ScheduleItem) => {
+    const ok = await confirmDialog({
+      title: "상담을 완료할까요?",
+      description: "지금까지 저장한 상담 메모로 완료 처리하고 AI 상담 요약에 추가해요. 완료하면 되돌릴 수 없어요.",
+      confirmText: "상담 완료",
+    });
+    if (!ok) return;
+    setCompletingId(item.id);
+    try {
+      const saved = await backendApi.getMemo(item.id);
+      const draft = useAppStore.getState().prepDrafts[item.id];
+      await completeConsult(item, composeMemo(draft?.memo || saved.memo || "", draft));
+      toast.success("상담을 완료했어요. AI 상담 요약에서 정리할 수 있어요");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "상담을 완료하지 못했어요");
+    } finally {
+      setCompletingId(null);
+    }
+  };
 
   const rel = relativeDayLabel(date);
   const title = ["오늘", "내일", "어제"].includes(rel) ? `${rel} 상담 일정` : "상담 일정";
@@ -80,7 +101,20 @@ export function ConsultScheduleCard() {
         </button>
       </div>
 
-      {items.length === 0 ? (
+      {isLoading ? (
+        <div className="space-y-2">
+          {[0, 1].map((i) => (
+            <div key={i} className="h-[72px] animate-pulse rounded-2xl bg-gray-100" />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="py-10 text-center">
+          <p className="text-sm text-rose-600">{error.message}</p>
+          <button type="button" onClick={reload} className="mt-2 text-sm font-semibold text-brand-600 hover:underline">
+            다시 불러오기
+          </button>
+        </div>
+      ) : items.length === 0 ? (
         <div className="py-12 text-center">
           <p className="text-sm text-muted">이 날은 예정된 상담이 없어요.</p>
           <button
@@ -94,7 +128,8 @@ export function ConsultScheduleCard() {
       ) : (
         <ul key={date} className="animate-rise space-y-2">
           {items.map((item) => {
-            const customer = item.customerId ? findCustomer(item.customerId) : undefined;
+            const customer = customerOf(item.customerId);
+            const name = customer?.name ?? item.customerName;
             return (
               <li
                 key={item.id}
@@ -115,31 +150,36 @@ export function ConsultScheduleCard() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <Link
-                        href={customer ? `/customers/${customer.id}` : "/customers"}
+                        href={item.customerId ? `/customers/${item.customerId}` : "/customers"}
                         className={cn(
                           "text-[15px] font-bold text-ink hover:text-brand-700",
                           item.done && "text-muted line-through",
                         )}
                       >
-                        {customer?.name ?? item.title} 고객
+                        {name ?? item.title} 고객
                       </Link>
                       {item.consultType && <Badge tone="brand">{CONSULT_TYPE_LABEL[item.consultType]}</Badge>}
                       {item.done && <Badge tone="green">완료</Badge>}
                     </div>
                     <p className="mt-0.5 truncate text-[13px] text-muted">
                       {item.done ? `${item.time} · ` : ""}
-                      {customer ? `${customer.age}세 · ${customer.job ?? "직업 미확인"}` : item.title}
+                      {customer ? `${formatAge(customer.age)} · ${customer.job ?? "직업 미확인"}` : item.title}
                     </p>
                   </div>
                 </div>
-                {!item.done && customer && (
+                {!item.done && item.customerId && (
                   <div className="flex gap-2 pl-[76px] sm:shrink-0 sm:pl-0">
                     <Link href={`/prep?scheduleId=${item.id}`} className={buttonClass("primary", "sm")}>
                       상담 준비
                     </Link>
-                    <button type="button" onClick={() => toggle(item.id)} className={buttonClass("outline", "sm")}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleComplete(item)}
+                      loading={completingId === item.id}
+                    >
                       완료
-                    </button>
+                    </Button>
                   </div>
                 )}
               </li>
@@ -152,10 +192,7 @@ export function ConsultScheduleCard() {
         <AddConsultDialog
           defaultDate={date < today ? today : date}
           onClose={() => setDialogOpen(false)}
-          onAdded={(id) => {
-            const added = useAppStore.getState().schedule.find((i) => i.id === id);
-            if (added) setDate(added.date);
-          }}
+          onAdded={(added) => setDate(added.date)}
         />
       )}
     </Card>

@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { BookMarked, LogOut, Menu, RotateCcw, X } from "lucide-react";
+import { BookMarked, LogOut, Menu, X } from "lucide-react";
 import { NAV_ITEMS } from "@/constants/nav";
 import { useMounted } from "@/hooks/useMounted";
 import { useAuthStore, useCurrentUser } from "@/lib/auth";
 import { logout } from "@/lib/authApi";
-import { confirmDialog, toast } from "@/lib/feedback";
+import { confirmDialog } from "@/lib/feedback";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
@@ -111,7 +111,6 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
   const user = useCurrentUser();
   const signOut = useAuthStore((s) => s.signOut);
   const pendingTasks = usePendingTasks();
-  const resetDemo = useAppStore((s) => s.resetDemo);
 
   const handleLogout = async () => {
     onNavigate?.();
@@ -120,19 +119,6 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
     await logout();
     signOut();
     router.replace("/login");
-  };
-
-  const handleReset = async () => {
-    onNavigate?.();
-    const ok = await confirmDialog({
-      title: "데모 데이터를 초기화할까요?",
-      description: "추가한 일정·할 일·상담 기록이 모두 처음 상태로 돌아가요.",
-      confirmText: "초기화",
-      tone: "danger",
-    });
-    if (!ok) return;
-    resetDemo();
-    toast.success("데모 데이터를 처음 상태로 되돌렸어요");
   };
 
   return (
@@ -192,23 +178,15 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold text-ink">{user.name} FC</p>
               <p className="truncate text-xs text-muted">
-                {user.branch} · {user.tenureMonth}개월차
+                {[user.branch, user.joinedYear && `${user.joinedYear}년 입사`].filter(Boolean).join(" · ")}
               </p>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-1.5">
-            <button
-              type="button"
-              onClick={handleReset}
-              className="flex h-8 items-center justify-center gap-1 rounded-xl bg-white text-xs font-semibold text-sub transition hover:text-ink"
-            >
-              <RotateCcw className="size-3.5" />
-              데모 초기화
-            </button>
+          <div className="mt-3">
             <button
               type="button"
               onClick={handleLogout}
-              className="flex h-8 items-center justify-center gap-1 rounded-xl bg-white text-xs font-semibold text-sub transition hover:text-rose-500"
+              className="flex h-8 w-full items-center justify-center gap-1 rounded-xl bg-white text-xs font-semibold text-sub transition hover:text-rose-500"
             >
               <LogOut className="size-3.5" />
               로그아웃

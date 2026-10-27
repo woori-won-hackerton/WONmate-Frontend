@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { Tabs } from "@/components/ui/Tabs";
 import { useMounted } from "@/hooks/useMounted";
-import { findCustomer } from "@/lib/mock";
+import { useCustomerLookup } from "@/lib/data";
 import { useAppStore } from "@/lib/store";
 import { CONSULT_TYPE_LABEL, RECORD_STATUS_LABEL, type RecordStatus } from "@/lib/types";
 import { cn, formatDate, inputClass } from "@/lib/utils";
@@ -26,6 +26,7 @@ type Tab = "open" | "confirmed";
 export default function RecordsPage() {
   const mounted = useMounted();
   const records = useAppStore((s) => s.records);
+  const customerOf = useCustomerLookup();
   const [tab, setTab] = useState<Tab>("open");
   const [query, setQuery] = useState("");
 
@@ -34,7 +35,7 @@ export default function RecordsPage() {
   const open = records.filter((r) => r.status !== "confirmed");
   const confirmed = records.filter((r) => r.status === "confirmed");
   const list = (tab === "open" ? open : confirmed)
-    .filter((r) => (findCustomer(r.customerId)?.name ?? "").includes(query.trim()))
+    .filter((r) => (customerOf(r.customerId)?.name ?? "").includes(query.trim()))
     .sort((a, b) => b.date.localeCompare(a.date));
 
   return (
@@ -74,7 +75,7 @@ export default function RecordsPage() {
         <Card className="p-2 sm:p-2">
           <ul className="divide-y divide-line">
             {list.map((r) => {
-              const customer = findCustomer(r.customerId);
+              const customer = customerOf(r.customerId);
               const preview = (r.summary?.needs || r.memo || "메모 없음").split("\n")[0].replace(/^•\s*/, "");
               const [, month, day] = r.date.split("-");
               return (

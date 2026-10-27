@@ -27,10 +27,3 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/records", label: "AI 상담 요약", short: "AI 상담 요약", icon: FileText, tab: true },
   { href: "/library", label: "지식 자료실", short: "자료실", icon: BookOpen },
 ];
-
-/** 로그인 연동 전 데모용 사용자 */
-export const CURRENT_FC = {
-  name: "한우리",
-  branch: "강남지점 3팀",
-  tenureMonth: 4,
-};

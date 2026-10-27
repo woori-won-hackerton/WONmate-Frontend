@@ -9,8 +9,6 @@ import { useAuthStore } from "@/lib/auth";
 import { login, LoginError } from "@/lib/authApi";
 import { cn } from "@/lib/utils";
 
-const DEMO = { id: "fc01", password: "1234" };
-
 export default function LoginPage() {
   const router = useRouter();
   const signIn = useAuthStore((s) => s.signIn);
@@ -30,7 +28,8 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      signIn(await login(id, password));
+      const { user, token } = await login(id, password);
+      signIn(user, token);
       router.replace("/"); // 온보딩 전이면 AppShell이 /onboarding으로 보냄
     } catch (err) {
       setError(err instanceof LoginError ? err.message : "잠시 후 다시 시도해 주세요.");
@@ -133,22 +132,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {/* 데모 계정 */}
-          <button
-            type="button"
-            onClick={() => {
-              setId(DEMO.id);
-              setPassword(DEMO.password);
-              setError("");
-            }}
-            className="mt-4 flex w-full items-center justify-between rounded-2xl bg-brand-50 px-4 py-3 text-left transition hover:bg-brand-100"
-          >
-            <span className="text-[13px] text-brand-800">
-              데모 계정 <b className="tabular ml-1">{DEMO.id} / {DEMO.password}</b>
-            </span>
-            <span className="text-xs font-bold text-brand-600">자동 입력</span>
-          </button>
         </div>
 
         <p className="mt-6 text-center text-xs text-white/60">계정은 소속 지점에서 발급해요</p>

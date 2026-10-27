@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, ChevronLeft, FileCheck2, FileX, NotebookPen, Sparkles } from "lucide-react";
 import { AI_STEPS, AiProgress } from "@/components/ui/AiProgress";
 import { Badge } from "@/components/ui/Badge";
@@ -12,10 +12,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Notice } from "@/components/ui/Notice";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
-import { draftRecordSummary } from "@/lib/api";
 import { useCurrentUser } from "@/lib/auth";
 import { confirmDialog, toast } from "@/lib/feedback";
-import { findCustomer } from "@/lib/mock";
+import { generateAiRecord, useAiRecord, useCustomerLookup } from "@/lib/data";
 import { useAppStore } from "@/lib/store";
 import { CONSULT_TYPE_LABEL, type RecordSummary } from "@/lib/types";
 import { cn, formatDate, inputClass } from "@/lib/utils";
@@ -35,8 +34,17 @@ export default function RecordDetailPage() {
   const updateRecord = useAppStore((s) => s.updateRecord);
   const confirmRecord = useAppStore((s) => s.confirmRecord);
   const user = useCurrentUser();
+  const customerOf = useCustomerLookup();
 
   const [generating, setGenerating] = useState(false);
+
+  // 서버에 이미 만들어진 AI 기록이 있으면 (다른 기기에서 만든 경우 등) 가져와서 채움
+  const serverRecord = useAiRecord(record && !record.summary ? record.scheduleId : undefined);
+  useEffect(() => {
+    if (record && !record.summary && serverRecord.data) {
+      updateRecord(record.id, { summary: serverRecord.data, status: "ai_draft" });
+    }
+  }, [record, serverRecord.data, updateRecord]);
 
   if (!mounted) return <LoadingBlock />;
 
@@ -50,18 +58,18 @@ export default function RecordDetailPage() {
     );
   }
 
-  const customer = findCustomer(record.customerId);
+  const customer = customerOf(record.customerId);
   const isConfirmed = record.status === "confirmed";
   const summary = record.summary;
 
   const handleDraft = async () => {
     setGenerating(true);
     try {
-      const next = await draftRecordSummary(record.memo);
+      const next = await generateAiRecord(record.scheduleId);
       updateRecord(record.id, { summary: next, status: "ai_draft" });
       toast.success("AI 초안을 만들었어요. 내용을 확인해 주세요");
-    } catch {
-      toast.error("AI 초안을 만들지 못했어요. 잠시 후 다시 시도해 주세요");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "AI 초안을 만들지 못했어요. 잠시 후 다시 시도해 주세요");
     } finally {
       setGenerating(false);
     }
@@ -106,30 +114,24 @@ export default function RecordDetailPage() {
 
       <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
         <Card>
-          <CardHeader icon={NotebookPen} title="저장한 상담 메모" right={<Badge>원문</Badge>} />
-          {isConfirmed ? (
-            <pre className="whitespace-pre-wrap rounded-2xl bg-surface p-4 font-sans text-sm leading-relaxed text-ink">
-              {record.memo || "메모 없음"}
-            </pre>
-          ) : (
-            <>
-              <textarea
-                value={record.memo}
-                onChange={(e) => updateRecord(record.id, { memo: e.target.value })}
-                rows={14}
-                className={cn(inputClass, "resize-y leading-relaxed")}
-              />
-              <Button
-                className="mt-3 w-full"
-                variant="secondary"
-                onClick={handleDraft}
-                loading={generating}
-                disabled={!record.memo.trim()}
-              >
-                {!generating && <Sparkles className="size-4" />}
-                {summary ? "AI 초안 다시 만들기" : "AI 초안 생성"}
-              </Button>
-            </>
+          <CardHeader icon={NotebookPen} title="상담 완료 때 저장한 메모" right={<Badge>원문</Badge>} />
+          <pre className="max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-surface p-4 font-sans text-sm leading-relaxed text-ink">
+            {record.memo || "메모 없음"}
+          </pre>
+          {!isConfirmed && !summary && (
+            <Button
+              className="mt-3 w-full"
+              variant="secondary"
+              onClick={handleDraft}
+              loading={generating}
+              disabled={!record.memo.trim() || serverRecord.isLoading}
+            >
+              {!generating && <Sparkles className="size-4" />}
+              AI 초안 생성
+            </Button>
+          )}
+          {!record.memo.trim() && (
+            <p className="mt-2 text-xs text-muted">저장된 메모가 없어서 AI 초안을 만들 수 없어요.</p>
           )}
         </Card>
 

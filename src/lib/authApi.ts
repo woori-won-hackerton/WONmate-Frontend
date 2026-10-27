@@ -1,29 +1,41 @@
 /**
- * 인증 API 계층
- * - 지금은 프론트 단독 데모용 mock
- * - 백엔드 연동 시: fetch(`${API_BASE}/auth/login`, { method: "POST", credentials: "include", ... })
- *   로 바꾸고, 토큰은 httpOnly 쿠키로 받는 걸 권장 (localStorage에 토큰 저장 X)
+ * 인증 API
+ * - POST /api/auth/login → accessToken
+ * - GET /api/users/{loginId} → 내 정보
  */
-import { MOCK_ACCOUNTS } from "@/lib/mock/users";
+import { backendApi, toUser } from "@/lib/backend";
+import { ApiError, clearRemoteCache } from "@/lib/http";
 import type { FcUser } from "@/lib/types";
-import { sleep } from "@/lib/utils";
 
 export class LoginError extends Error {}
 
-export async function login(id: string, password: string): Promise<FcUser> {
-  await sleep(600);
+export interface LoginResult {
+  user: FcUser;
+  token: string;
+}
 
-  const account = MOCK_ACCOUNTS.find((a) => a.id === id.trim().toLowerCase() && a.password === password);
-  if (!account) {
-    throw new LoginError("아이디 또는 비밀번호가 올바르지 않아요.");
+const WRONG_ACCOUNT = "아이디 또는 비밀번호가 올바르지 않아요.";
+
+export async function login(id: string, password: string): Promise<LoginResult> {
+  const loginId = id.trim();
+
+  let token: string;
+  try {
+    ({ accessToken: token } = await backendApi.login(loginId, password));
+  } catch (e) {
+    if (e instanceof ApiError && [400, 401, 403, 404].includes(e.status)) throw new LoginError(WRONG_ACCOUNT);
+    throw new LoginError(e instanceof Error ? e.message : "잠시 후 다시 시도해 주세요.");
   }
 
-  const { password: _password, ...user } = account;
-  void _password;
-  return user;
+  try {
+    return { user: toUser(await backendApi.getUser(loginId, token)), token };
+  } catch {
+    // 내 정보 조회에 실패해도 로그인은 진행 (이름 자리에 아이디 표시)
+    return { user: { id: loginId, name: loginId, branch: "", joinedYear: null }, token };
+  }
 }
 
 export async function logout(): Promise<void> {
-  // 백엔드 연동 시: await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
-  await sleep(100);
+  // 백엔드에 로그아웃 API가 없음 (JWT는 브라우저에서 지우면 끝)
+  clearRemoteCache();
 }

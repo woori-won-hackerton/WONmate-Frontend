@@ -12,16 +12,14 @@ export const CONSULT_TYPE_LABEL: Record<ConsultType, string> = {
 export interface Customer {
   id: string;
   name: string;
-  age: number;
-  gender: "남" | "여";
-  phone: string;
+  /** 만 나이. 생년월일이 없으면 null */
+  age: number | null;
+  gender: "남" | "여" | "기타";
+  phone: string | null;
   job: string | null;
   family: string | null;
   region: string | null;
-  lastConsultedAt: string | null;
-  updatedAt: string;
-  source: string;
-  /** 장애 유무. 고객이 직접 밝힌 경우만 기록, null = 확인되지 않음 */
+  /** 장애 유무. null = 확인되지 않음 */
   disability: string | null;
 }
 
@@ -31,18 +29,21 @@ export interface WikiDoc {
   updatedAt: string;
 }
 
-export type ContractStatus = "유지" | "갱신 예정" | "실효";
-export type ContractCategory = "종신" | "암" | "실손" | "연금" | "어린이";
+export type ContractStatus = "유지" | "실효" | "해지" | "만기";
+
+/** 지금 보장이 유지되는 계약 상태 */
+export const ACTIVE_CONTRACT_STATUSES: ContractStatus[] = ["유지"];
 
 export interface Contract {
   id: string;
   customerId: string;
   productName: string;
-  category: ContractCategory;
+  /** 보험 종류 (예: 암, 종신, 건강) */
+  category: string;
   status: ContractStatus;
   startDate: string;
-  monthlyPremium: number;
-  renewalDate: string | null;
+  /** 월납 보험료. 월납이 아니면 null */
+  monthlyPremium: number | null;
 }
 
 export interface Briefing {
@@ -86,10 +87,14 @@ export interface RecordSummary {
   nextActions: string;
 }
 
+/**
+ * AI 상담 요약 — 상담 완료 시 이 브라우저에 목록용으로 저장
+ * (AI 초안은 백엔드 POST/GET /api/consults/{scheduleId}/ai-record)
+ */
 export interface ConsultationRecord {
   id: string;
-  /** 어떤 상담 일정에서 만들어진 기록인지 */
-  scheduleId?: string;
+  /** 백엔드 상담 id */
+  scheduleId: string;
   customerId: string;
   type: ConsultType;
   date: string;
@@ -107,6 +112,8 @@ export interface ScheduleItem {
   date: string;
   time?: string;
   customerId?: string;
+  /** 고객 이름 (백엔드 상담 일정 응답에 포함) */
+  customerName?: string;
   consultType?: ConsultType;
   done: boolean;
 }
@@ -196,5 +203,6 @@ export interface FcUser {
   id: string;
   name: string;
   branch: string;
-  tenureMonth: number;
+  /** 입사 연도 */
+  joinedYear: number | null;
 }

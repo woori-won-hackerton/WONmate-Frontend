@@ -44,6 +44,11 @@ export function relativeDayLabel(iso: string): string {
   return iso < today ? "지난 일정" : "예정";
 }
 
+/** 만 나이 표시 (나이를 모르면 "나이 미확인") */
+export function formatAge(age: number | null | undefined): string {
+  return age == null ? "나이 미확인" : `${age}세`;
+}
+
 export function formatWon(value: number): string {
   return `${value.toLocaleString("ko-KR")}원`;
 }

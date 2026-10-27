@@ -3,47 +3,51 @@
 import { useState } from "react";
 import { CalendarPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { CUSTOMERS, findCustomer } from "@/lib/mock";
+import { useConsultActions, useCustomers } from "@/lib/data";
 import { toast } from "@/lib/feedback";
-import { useAppStore } from "@/lib/store";
-import { CONSULT_TYPE_LABEL, CONSULT_TYPES, type ConsultType } from "@/lib/types";
-import { cn, inputClass } from "@/lib/utils";
+import { CONSULT_TYPE_LABEL, CONSULT_TYPES, type ConsultType, type ScheduleItem } from "@/lib/types";
+import { cn, formatAge, inputClass } from "@/lib/utils";
 
 interface AddConsultDialogProps {
   defaultDate: string;
   defaultCustomerId?: string;
   onClose: () => void;
-  /** 추가된 일정 id 전달 */
-  onAdded?: (id: string) => void;
+  /** 추가된 일정 전달 */
+  onAdded?: (item: ScheduleItem) => void;
 }
 
 /** 상담 일정 추가 — 상담 종류는 여기서 정하고, 상담 준비 화면에서는 보여주기만 함 */
 export function AddConsultDialog({ defaultDate, defaultCustomerId = "", onClose, onAdded }: AddConsultDialogProps) {
-  const addScheduleItem = useAppStore((s) => s.addScheduleItem);
+  const { data: customers, isLoading: customersLoading } = useCustomers();
+  const { addConsult } = useConsultActions();
 
   const [customerId, setCustomerId] = useState(defaultCustomerId);
   const [type, setType] = useState<ConsultType>("new");
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState("10:00");
+  const [saving, setSaving] = useState(false);
 
-  const customer = customerId ? findCustomer(customerId) : undefined;
-  const canSubmit = Boolean(customer && date && time);
+  const customer = customers.find((c) => c.id === customerId);
+  const canSubmit = Boolean(customer && date && time) && !saving;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customer) return;
-    const id = addScheduleItem({
-      kind: "consult",
-      title: `${customer.name} 고객 ${CONSULT_TYPE_LABEL[type]}`,
-      date,
-      time,
-      customerId: customer.id,
-      consultType: type,
-      done: false,
-    });
-    onAdded?.(id);
-    onClose();
-    toast.success(`${customer.name} 고객 상담 일정을 추가했어요`);
+    if (!customer || saving) return;
+    setSaving(true);
+    try {
+      const added = await addConsult({
+        customerId: customer.id,
+        consultType: type,
+        date,
+        time,
+      });
+      onAdded?.(added);
+      onClose();
+      toast.success(`${customer.name} 고객 상담 일정을 추가했어요`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "상담 일정을 추가하지 못했어요");
+      setSaving(false);
+    }
   };
 
   return (
@@ -71,11 +75,16 @@ export function AddConsultDialog({ defaultDate, defaultCustomerId = "", onClose,
         <div className="space-y-4">
           <label className="block">
             <span className="mb-1.5 block text-sm font-semibold text-sub">고객</span>
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className={inputClass}>
-              <option value="">고객을 선택하세요</option>
-              {CUSTOMERS.map((c) => (
+            <select
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+              disabled={customersLoading}
+              className={inputClass}
+            >
+              <option value="">{customersLoading ? "고객 목록을 불러오는 중…" : "고객을 선택하세요"}</option>
+              {customers.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.age}세)
+                  {c.name} ({formatAge(c.age)})
                 </option>
               ))}
             </select>
@@ -118,7 +127,7 @@ export function AddConsultDialog({ defaultDate, defaultCustomerId = "", onClose,
           <Button variant="outline" size="lg" onClick={onClose}>
             취소
           </Button>
-          <Button type="submit" size="lg" disabled={!canSubmit}>
+          <Button type="submit" size="lg" disabled={!canSubmit} loading={saving}>
             일정 추가
           </Button>
         </div>
