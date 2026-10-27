@@ -2,15 +2,12 @@
  * AI 처리 계층
  * - AI 브리핑: POST /api/consults/{id}/briefing · 저장된 브리핑 GET /api/consults/{id}/briefing
  * - AI 상담 요약 초안: lib/data.ts 의 generateAiRecord (POST /api/consults/{id}/ai-record)
- * - AI 챗봇: BACKEND_READY.chat 이 true면 백엔드, 아니면 mock (백엔드 API 준비 중)
+ * - AI 챗봇: POST /api/rag/ask
  * - 화면 컴포넌트는 이 파일의 함수 시그니처에만 의존
  */
 import { backendApi, type BriefingDto } from "@/lib/backend";
-import { BACKEND_READY } from "@/lib/config";
-import { ApiError, apiRequest } from "@/lib/http";
-import { findDoc, GLOSSARY, GLOSSARY_DOC_ID, KNOWLEDGE_CHUNKS, PRODUCTS, type KnowledgeChunk } from "@/lib/mock";
-import type { Briefing, ChatRequest, ChatResponse, ChatSource, ConsultType, DocType } from "@/lib/types";
-import { sleep } from "@/lib/utils";
+import { ApiError } from "@/lib/http";
+import type { Briefing, ChatRequest, ChatResponse, ConsultType } from "@/lib/types";
 
 /** 예상 질문 — AI가 못 만들었을 때(예전 브리핑 등)만 쓰는 상담 종류별 기본값 */
 const QUESTIONS_BY_TYPE: Record<ConsultType, string[]> = {
@@ -67,105 +64,10 @@ export async function loadSavedBriefing(scheduleId: string, type: ConsultType): 
 }
 
 /* ------------------------------------------------------------------ */
-/* 지식 챗봇 (RAG)                                                      */
+/* AI 챗봇 (RAG)                                                        */
 /* ------------------------------------------------------------------ */
 
-/** 챗봇 검색 문단 수 — 백엔드 요청 고정값 */
-export const CHAT_TOP_K = 5;
-
-/** TODO: 백엔드 경로 확정되면 수정 */
-const CHAT_PATH = "/api/chat";
-
-/**
- * AI 챗봇 질문
- * - BACKEND_READY.chat 이 true면 백엔드 호출, 아니면 mock
- * - 응답이 { isSuccess, result } 로 감싸져 와도, 그대로 와도 처리
- */
-export async function askKnowledge(req: ChatRequest): Promise<ChatResponse> {
-  if (BACKEND_READY.chat) {
-    return apiRequest<ChatResponse>(CHAT_PATH, { method: "POST", body: req });
-  }
-  return mockAskKnowledge(req);
-}
-
-/* ---------------- 이하 mock (백엔드 연동 후 삭제) ---------------- */
-
-const normalize = (text: string) => text.replace(/\s+/g, "").toLowerCase();
-
-const DOC_TYPE_CODE: Record<DocType, string> = {
-  약관: "TERMS",
-  상품설명서: "SUMMARY",
-  업무지침: "GUIDE",
-};
-
-/** 문서 id("d1") → 숫자 id (백엔드 형식 흉내) */
-const numId = (id: string) => Number(id.replace(/\D/g, "")) || 0;
-
-function toSource(docId: string, page: number, chunkId: number): ChatSource {
-  const doc = findDoc(docId)!;
-  const product = PRODUCTS.find((p) => p.id === doc.productId);
-  return {
-    productId: product?.apiId ?? null,
-    documentId: numId(doc.id),
-    documentName: `${doc.title} (${doc.version}).pdf`,
-    documentType: DOC_TYPE_CODE[doc.docType],
-    chunkId,
-    sectionTitle: null,
-    startPage: page,
-    endPage: page,
-  };
-}
-
-const NOT_FOUND: ChatResponse = {
-  answer: "승인된 문서에서 이 질문의 근거를 찾지 못했어요. 질문을 조금 더 구체적으로 입력해 주세요.",
-  sources: [],
-};
-
-async function mockAskKnowledge(req: ChatRequest): Promise<ChatResponse> {
-  await sleep(2200);
-  const q = normalize(req.question);
-
-  // 용어 · 개념 설명 — 해설집 검색
-  if (req.questionType !== "PRODUCT_EXPLANATION") {
-    const kind = req.questionType === "TERM_EXPLANATION" ? "term" : "concept";
-    const hit = GLOSSARY.filter((g) => g.kind === kind)
-      .map((g) => ({ g, score: g.keywords.filter((k) => q.includes(normalize(k))).length }))
-      .filter((h) => h.score > 0)
-      .sort((a, b) => b.score - a.score)[0];
-    if (!hit) return NOT_FOUND;
-
-    const { g } = hit;
-    return {
-      answer: `${g.title}\n\n${g.body}${g.caution ? `\n\n참고: ${g.caution}` : ""}`,
-      sources: [toSource(GLOSSARY_DOC_ID, g.page, numId(g.id))],
-    };
-  }
-
-  // 상품 설명 — 선택한 상품의 게시 문서 + 공통 문서 검색
-  const product = PRODUCTS.find((p) => p.apiId === req.productId);
-  if (!product) return NOT_FOUND;
-
-  const hits: KnowledgeChunk[] = KNOWLEDGE_CHUNKS.filter((chunk) => {
-    const doc = findDoc(chunk.docId);
-    return doc && doc.status === "게시" && (doc.productId === product.id || doc.productId === "common");
-  })
-    .map((chunk) => ({ chunk, score: chunk.keywords.filter((k) => q.includes(normalize(k))).length }))
-    .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, req.topK)
-    .map((s) => s.chunk);
-
-  if (!hits.length) return NOT_FOUND;
-
-  const asksPayout = /나오나요|나와요|지급되나요|받을수있나요|보장되나요/.test(q);
-  const body = hits
-    .map((h) => [h.text, h.condition && `조건: ${h.condition}`, h.caution && `참고: ${h.caution}`].filter(Boolean).join("\n"))
-    .join("\n\n");
-
-  return {
-    answer: asksPayout
-      ? `개별 보험금 지급 여부는 진단서와 약관 조건에 따른 심사 사항이라 확정할 수 없어요. 약관상 확인할 조건은 아래와 같아요.\n\n${body}`
-      : body,
-    sources: hits.map((h) => toSource(h.docId, h.page, numId(h.id))),
-  };
+/** AI 챗봇 질문 — POST /api/rag/ask (약관 · 상품요약서에서 근거를 찾아 답변) */
+export function askKnowledge(req: ChatRequest): Promise<ChatResponse> {
+  return backendApi.ask(req);
 }

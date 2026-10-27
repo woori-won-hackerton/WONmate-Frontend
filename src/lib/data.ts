@@ -12,7 +12,16 @@ import { backendApi, toScheduleItem, type ConsultDto } from "@/lib/backend";
 import { CONSULT_RANGE } from "@/lib/config";
 import { ApiError } from "@/lib/http";
 import { useAppStore } from "@/lib/store";
-import type { Contract, ConsultType, Customer, RecordSummary, ScheduleItem, Todo } from "@/lib/types";
+import type {
+  Contract,
+  ConsultType,
+  Customer,
+  LibraryDocument,
+  Product,
+  RecordSummary,
+  ScheduleItem,
+  Todo,
+} from "@/lib/types";
 import { addDays } from "@/lib/utils";
 
 const SWR_OPTIONS: SWRConfiguration = {
@@ -302,4 +311,20 @@ export function useSavedBriefing(consultId?: string, type?: ConsultType) {
     SWR_OPTIONS,
   );
   return { data: q.data ?? null, isLoading: q.isLoading };
+}
+
+/* ------------------------------------------------------------------ */
+/* AI 챗봇 상품 · 지식 자료실                                             */
+/* ------------------------------------------------------------------ */
+
+/** GET /api/products — 챗봇 상품 설명에서 고를 수 있는 상품 */
+export function useProducts(): Remote<Product[]> {
+  const q = useSWR("rag-products", backendApi.getProducts, SWR_OPTIONS);
+  return { data: q.data ?? [], isLoading: q.isLoading, error: q.error ?? null, reload: () => void q.mutate() };
+}
+
+/** GET /api/documents — 지식 자료실 문서 (적재 상태 포함) */
+export function useDocuments(): Remote<LibraryDocument[]> {
+  const q = useSWR("rag-documents", backendApi.getDocuments, SWR_OPTIONS);
+  return { data: q.data ?? [], isLoading: q.isLoading, error: q.error ?? null, reload: () => void q.mutate() };
 }

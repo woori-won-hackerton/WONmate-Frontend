@@ -108,31 +108,45 @@ export interface ScheduleItem {
   recordStatus?: RecordStatus;
 }
 
-/** 상품 대분류 (지식 챗봇 상품 선택용) */
-export type ProductCategory = "종신보험" | "암보험" | "어린이보험";
+/** 상품 대분류 (백엔드가 상품명으로 정함) */
+export type ProductCategory = "종신보험" | "암보험" | "어린이보험" | "기타";
 
-export const PRODUCT_CATEGORIES: ProductCategory[] = ["종신보험", "암보험", "어린이보험"];
+export const PRODUCT_CATEGORIES: ProductCategory[] = ["종신보험", "암보험", "어린이보험", "기타"];
 
+/** AI 챗봇에서 고를 수 있는 상품 (백엔드 GET /api/products — 문서 적재가 끝난 상품만) */
 export interface Product {
-  id: string;
   /** 백엔드 상품 id (챗봇 request의 productId) */
-  apiId: number;
+  id: number;
   name: string;
   category: ProductCategory;
+  documentCount: number;
 }
 
-export type DocType = "약관" | "상품설명서" | "업무지침";
+/** 문서 종류 (백엔드 enum 그대로) */
+export type DocumentType = "TERMS" | "SUMMARY";
 
-export interface KnowledgeDoc {
-  id: string;
-  /** "common" = 상품 공통 문서 */
-  productId: string;
+export const DOCUMENT_TYPE_LABEL: Record<DocumentType, string> = {
+  TERMS: "약관",
+  SUMMARY: "상품요약서",
+};
+
+/** 문서 적재 상태 — COMPLETED만 챗봇이 검색해요 */
+export type IngestionStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+
+/** 지식 자료실 문서 (백엔드 GET /api/documents) */
+export interface LibraryDocument {
+  id: number;
+  productId: number;
+  productName: string;
+  category: ProductCategory;
+  /** 화면 표시용 이름 (예: 무배당…암보험 약관) */
   title: string;
-  docType: DocType;
-  version: string;
-  effectiveFrom: string;
-  status: "게시" | "게시 중단";
-  pages: number;
+  /** 원본 PDF 파일명 */
+  fileName: string;
+  documentType: DocumentType;
+  status: IngestionStatus;
+  chunkCount: number;
+  updatedAt: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -161,10 +175,11 @@ export interface ChatRequest {
 /** 챗봇 response의 근거 문서 */
 export interface ChatSource {
   productId: number | null;
+  productName: string | null;
   documentId: number;
+  /** 화면 표시용 문서 이름 (예: 무배당…암보험 약관) */
   documentName: string;
-  /** 예: TERMS, SUMMARY */
-  documentType: string;
+  documentType: DocumentType;
   chunkId: number;
   sectionTitle: string | null;
   startPage: number | null;

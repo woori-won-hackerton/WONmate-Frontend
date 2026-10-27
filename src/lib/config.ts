@@ -6,15 +6,6 @@
  */
 
 /**
- * 백엔드에 아직 API가 없는 기능 — API가 생기면 true로 바꾸고 lib/api.ts 의 경로를 맞추면 돼요
- * (false인 기능은 프론트 mock으로 동작)
- */
-export const BACKEND_READY = {
-  /** AI 챗봇 (RAG) */
-  chat: false,
-} as const;
-
-/**
  * 상담 준비 드롭다운 · 고객별 다음 상담에 쓰는 상담 일정 범위
  * (GET /api/consults?from=&to= 로 한 번에 불러와요. 백엔드 최대 92일)
  */

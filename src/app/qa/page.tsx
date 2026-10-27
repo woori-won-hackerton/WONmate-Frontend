@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BookA, Bot, FileText, Lightbulb, Package, SendHorizontal, type LucideIcon } from "lucide-react";
+import { BookA, Bot, ExternalLink, FileText, Lightbulb, Package, RotateCcw, SendHorizontal, type LucideIcon } from "lucide-react";
 import { ProductPicker } from "@/components/qa/ProductPicker";
 import { AI_STEPS, AiProgress } from "@/components/ui/AiProgress";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { askKnowledge, CHAT_TOP_K } from "@/lib/api";
+import { CHAT_TOP_K, PRODUCT_SUGGESTIONS, TYPE_SUGGESTIONS } from "@/constants/chat";
+import { askKnowledge } from "@/lib/api";
+import { useProducts } from "@/lib/data";
+import { openDocument } from "@/lib/documents";
 import { toast } from "@/lib/feedback";
-import { PRODUCTS, SUGGESTED_QUESTIONS, TYPE_SUGGESTIONS } from "@/lib/mock";
 import {
+  DOCUMENT_TYPE_LABEL,
   QUESTION_TYPE_LABEL,
   QUESTION_TYPES,
   type ChatMessage,
@@ -42,7 +45,7 @@ function pageLabel(s: ChatSource) {
   return s.endPage != null && s.endPage !== s.startPage ? `p.${s.startPage}–${s.endPage}` : `p.${s.startPage}`;
 }
 
-/** 답변 말풍선 — 본문 + 마지막에 근거 문서(파일명 · 페이지) */
+/** 답변 말풍선 — 본문 + 마지막에 근거 문서 (누르면 원본 PDF의 해당 페이지가 열림) */
 function AnswerBubble({ text, sources }: { text: string; sources: ChatSource[] }) {
   const list = uniqueSources(sources);
   return (
@@ -54,13 +57,22 @@ function AnswerBubble({ text, sources }: { text: string; sources: ChatSource[] }
           <p className="mb-2 text-xs font-bold text-sub">참고 문서</p>
           <ul className="space-y-1.5">
             {list.map((s) => (
-              <li
-                key={`${s.documentId}-${s.chunkId}`}
-                className="flex items-start gap-2 rounded-xl bg-surface px-3 py-2 text-xs text-sub"
-              >
-                <FileText className="mt-0.5 size-3.5 shrink-0 text-brand-600" />
-                <span className="min-w-0 flex-1 break-all">{s.documentName}</span>
-                {pageLabel(s) && <span className="tabular shrink-0 font-semibold text-ink">{pageLabel(s)}</span>}
+              <li key={`${s.documentId}-${s.chunkId}`}>
+                <button
+                  type="button"
+                  onClick={() => openDocument(s.documentId, s.startPage)}
+                  title="원본 문서 열기"
+                  className="group flex w-full items-start gap-2 rounded-xl bg-surface px-3 py-2 text-left text-xs text-sub transition hover:bg-brand-50"
+                >
+                  <FileText className="mt-0.5 size-3.5 shrink-0 text-brand-600" />
+                  <span className="min-w-0 flex-1">
+                    <span className="break-all group-hover:text-brand-700">{s.documentName}</span>
+                    {s.sectionTitle && <span className="mt-0.5 block text-[11px] text-muted">{s.sectionTitle}</span>}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-muted">{DOCUMENT_TYPE_LABEL[s.documentType] ?? ""}</span>
+                  {pageLabel(s) && <span className="tabular shrink-0 font-semibold text-ink">{pageLabel(s)}</span>}
+                  <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-muted group-hover:text-brand-600" />
+                </button>
               </li>
             ))}
           </ul>
@@ -72,15 +84,22 @@ function AnswerBubble({ text, sources }: { text: string; sources: ChatSource[] }
 
 export default function KnowledgeChatPage() {
   const [questionType, setQuestionType] = useState<QuestionType>("TERM_EXPLANATION");
-  const [productId, setProductId] = useState(PRODUCTS[0].id);
+  const products = useProducts();
+  const [productId, setProductId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isProduct = questionType === "PRODUCT_EXPLANATION";
-  const product = PRODUCTS.find((p) => p.id === productId) ?? PRODUCTS[0];
-  const suggestions = isProduct ? (SUGGESTED_QUESTIONS[productId] ?? []) : TYPE_SUGGESTIONS[questionType];
+  // 고른 상품이 없으면(처음 · 목록 변경) 첫 상품
+  const product = products.data.find((p) => p.id === productId) ?? products.data[0];
+  const productMissing = isProduct && !product;
+  const suggestions = isProduct
+    ? product
+      ? PRODUCT_SUGGESTIONS[product.category]
+      : []
+    : TYPE_SUGGESTIONS[questionType as Exclude<QuestionType, "PRODUCT_EXPLANATION">];
 
   useEffect(() => {
     // 대화가 있을 때만 맨 아래로 (빈 화면에서 안내 문구가 잘리지 않게)
@@ -89,12 +108,12 @@ export default function KnowledgeChatPage() {
 
   const send = async (text: string) => {
     const question = text.trim();
-    if (!question || loading) return;
+    if (!question || loading || productMissing) return;
 
     // 백엔드 request 형태 — productId는 상품 설명일 때만
     const request: ChatRequest = {
       questionType,
-      ...(isProduct ? { productId: product.apiId } : {}),
+      ...(isProduct && product ? { productId: product.id } : {}),
       question,
       topK: CHAT_TOP_K,
     };
@@ -107,15 +126,15 @@ export default function KnowledgeChatPage() {
         role: "user",
         text: question,
         questionType,
-        productName: isProduct ? product.name : undefined,
+        productName: isProduct ? product?.name : undefined,
       },
     ]);
     setLoading(true);
     try {
       const res = await askKnowledge(request);
       setMessages((m) => [...m, { id: uid("m"), role: "assistant", text: res.answer, sources: res.sources }]);
-    } catch {
-      toast.error("답변을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.");
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "답변을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -151,7 +170,23 @@ export default function KnowledgeChatPage() {
       {/* 상품 설명일 때만 상품 선택 */}
       {isProduct && (
         <div className="mb-3 animate-rise">
-          <ProductPicker productId={productId} onChange={setProductId} />
+          {product ? (
+            <ProductPicker products={products.data} productId={product.id} onChange={setProductId} />
+          ) : products.isLoading ? (
+            <div className="h-11 animate-pulse rounded-xl bg-gray-200/70" />
+          ) : (
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 text-sm text-sub shadow-card">
+              <span>
+                {products.error
+                  ? "상품 목록을 불러오지 못했어요."
+                  : "아직 질문할 수 있는 상품이 없어요. 문서 적재가 끝나면 나타나요."}
+              </span>
+              <Button size="sm" variant="secondary" onClick={products.reload} className="shrink-0">
+                <RotateCcw className="size-4" />
+                다시 불러오기
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -163,7 +198,7 @@ export default function KnowledgeChatPage() {
                 <Bot className="size-7" />
               </div>
               <p className="font-bold text-ink">무엇이든 물어보세요</p>
-              <p className="mt-1 text-sm text-muted">승인된 약관·상품요약서·해설집에서 근거를 찾아 답해요.</p>
+              <p className="mt-1 text-sm text-muted">약관·상품요약서에서 근거를 찾아 답해요. 답변까지 조금 걸릴 수 있어요.</p>
             </div>
           )}
 
@@ -204,7 +239,7 @@ export default function KnowledgeChatPage() {
                 key={q}
                 type="button"
                 onClick={() => send(q)}
-                disabled={loading}
+                disabled={loading || productMissing}
                 className="shrink-0 rounded-full bg-surface px-3.5 py-2 text-[13px] text-sub transition hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50"
               >
                 {q}
@@ -221,10 +256,13 @@ export default function KnowledgeChatPage() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isProduct ? `${product.name}에 대해 질문하기` : TYPE_META[questionType].hint}
+              placeholder={
+                isProduct ? (product ? `${product.name}에 대해 질문하기` : "상품을 먼저 골라 주세요") : TYPE_META[questionType].hint
+              }
+              disabled={productMissing}
               className={inputClass}
             />
-            <Button type="submit" disabled={!input.trim()} loading={loading} aria-label="보내기" className="shrink-0 px-4">
+            <Button type="submit" disabled={!input.trim() || productMissing} loading={loading} aria-label="보내기" className="shrink-0 px-4">
               {!loading && <SendHorizontal className="size-4" />}
             </Button>
           </form>

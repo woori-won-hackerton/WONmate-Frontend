@@ -4,19 +4,26 @@
  * WONmate 백엔드(Spring) API — 응답 타입(Dto) + 프론트 타입으로 바꾸는 함수
  * 백엔드 응답 형식이 바뀌면 이 파일만 고치면 돼요.
  */
-import { apiRequest } from "@/lib/http";
+import { apiBlob, apiRequest } from "@/lib/http";
 import type {
+  ChatRequest,
+  ChatResponse,
   Contract,
   ContractStatus,
   ConsultType,
   Customer,
+  DocumentType,
   FcUser,
+  IngestionStatus,
+  LibraryDocument,
+  Product,
+  ProductCategory,
   RecordStatus,
   RecordSummary,
   ScheduleItem,
   Todo,
 } from "@/lib/types";
-import { CONSULT_TYPE_LABEL } from "@/lib/types";
+import { CONSULT_TYPE_LABEL, PRODUCT_CATEGORIES } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* 백엔드 응답 타입                                                       */
@@ -124,6 +131,28 @@ export interface CustomerWikiDto {
   wikiId: number | null;
   customerId: number;
   content: string | null;
+}
+
+/** GET /api/products */
+export interface ProductDto {
+  productId: number;
+  productName: string;
+  category: string;
+  documentCount: number;
+}
+
+/** GET /api/documents */
+export interface DocumentDto {
+  documentId: number;
+  productId: number;
+  productName: string;
+  category: string;
+  title: string;
+  fileName: string;
+  documentType: DocumentType;
+  status: IngestionStatus;
+  chunkCount: number;
+  updatedAt: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -234,6 +263,34 @@ export function toAiRecordDto(summary: RecordSummary): AiRecordDto {
     customerQuestions: summary.questions,
     unresolvedIssues: summary.unresolved,
     nextActions: summary.nextActions,
+  };
+}
+
+/** 모르는 대분류는 "기타"로 */
+const toCategory = (value: string): ProductCategory =>
+  (PRODUCT_CATEGORIES as string[]).includes(value) ? (value as ProductCategory) : "기타";
+
+export function toProduct(dto: ProductDto): Product {
+  return {
+    id: dto.productId,
+    name: dto.productName,
+    category: toCategory(dto.category),
+    documentCount: dto.documentCount,
+  };
+}
+
+export function toLibraryDocument(dto: DocumentDto): LibraryDocument {
+  return {
+    id: dto.documentId,
+    productId: dto.productId,
+    productName: dto.productName,
+    category: toCategory(dto.category),
+    title: dto.title,
+    fileName: dto.fileName,
+    documentType: dto.documentType,
+    status: dto.status,
+    chunkCount: dto.chunkCount,
+    updatedAt: dto.updatedAt,
   };
 }
 
@@ -378,4 +435,16 @@ export const backendApi = {
     toRecordSummary(
       await apiRequest<AiRecordDto>(`/api/consults/${consultId}/ai-record/confirm`, { method: "POST" }),
     ),
+
+  /** POST /api/rag/ask — AI 챗봇 질문 (답변까지 10~30초 걸릴 수 있음) */
+  ask: (req: ChatRequest) => apiRequest<ChatResponse>("/api/rag/ask", { method: "POST", body: req }),
+
+  /** GET /api/products — 챗봇에서 고를 수 있는 상품 (문서 적재가 끝난 상품만) */
+  getProducts: async () => (await apiRequest<ProductDto[]>("/api/products")).map(toProduct),
+
+  /** GET /api/documents — 지식 자료실 문서 */
+  getDocuments: async () => (await apiRequest<DocumentDto[]>("/api/documents")).map(toLibraryDocument),
+
+  /** GET /api/documents/{id}/file — 원본 PDF */
+  getDocumentFile: (documentId: number) => apiBlob(`/api/documents/${documentId}/file`),
 };

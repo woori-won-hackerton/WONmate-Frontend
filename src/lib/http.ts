@@ -6,6 +6,7 @@
  * - 로그인 토큰을 Authorization: Bearer 로 붙임
  * - { isSuccess, code, message, result } 로 감싼 응답은 result만 꺼내고, 안 감싼 응답은 그대로 반환
  * - 토큰 만료(401) → 자동 로그아웃 + 안내
+ * - 파일(PDF)은 apiBlob 으로 받음
  */
 import { mutate } from "swr";
 import { useAuthStore } from "@/lib/auth";
@@ -54,6 +55,17 @@ export function clearRemoteCache() {
   void mutate(() => true, undefined, { revalidate: false });
 }
 
+/** 토큰 만료 — 로그아웃 + 안내 후 예외 */
+function handleExpired(): never {
+  const { user, signOut } = useAuthStore.getState();
+  if (user) {
+    signOut();
+    clearRemoteCache();
+    toast.error("로그인이 만료됐어요. 다시 로그인해 주세요.");
+  }
+  throw new ApiError("로그인이 만료됐어요.", 401);
+}
+
 export async function apiRequest<T>(path: string, { method = "GET", body, auth = true }: RequestOptions = {}): Promise<T> {
   const token = auth ? useAuthStore.getState().token : null;
 
@@ -82,13 +94,7 @@ export async function apiRequest<T>(path: string, { method = "GET", body, auth =
   }
 
   if (res.status === 401 && auth) {
-    const { user, signOut } = useAuthStore.getState();
-    if (user) {
-      signOut();
-      clearRemoteCache();
-      toast.error("로그인이 만료됐어요. 다시 로그인해 주세요.");
-    }
-    throw new ApiError("로그인이 만료됐어요.", 401);
+    handleExpired();
   }
 
   if (!res.ok || (isEnvelope(json) && json.isSuccess === false)) {
@@ -96,4 +102,31 @@ export async function apiRequest<T>(path: string, { method = "GET", body, auth =
   }
 
   return (isEnvelope(json) ? json.result : json) as T;
+}
+
+/** 파일 받기 (원본 PDF 등) — 로그인 토큰을 붙여서 Blob으로 반환 */
+export async function apiBlob(path: string): Promise<Blob> {
+  const token = useAuthStore.getState().token;
+
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      headers: {
+        Accept: "application/pdf, application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError("네트워크에 연결할 수 없어요.", 0);
+  }
+
+  if (res.status === 401) {
+    handleExpired();
+  }
+  if (!res.ok) {
+    const json: unknown = await res.json().catch(() => null);
+    throw new ApiError(errorMessage(json, res.status), res.status);
+  }
+  return res.blob();
 }

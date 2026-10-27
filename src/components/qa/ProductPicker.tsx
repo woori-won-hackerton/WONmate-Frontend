@@ -3,33 +3,36 @@
 import { useState } from "react";
 import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
-import { PRODUCTS } from "@/lib/mock";
-import { PRODUCT_CATEGORIES, type ProductCategory } from "@/lib/types";
+import { PRODUCT_CATEGORIES, type Product, type ProductCategory } from "@/lib/types";
 import { cn, inputClass } from "@/lib/utils";
 
 interface ProductPickerProps {
-  productId: string;
-  onChange: (productId: string) => void;
+  /** GET /api/products (비어 있지 않아야 함) */
+  products: Product[];
+  productId: number;
+  onChange: (productId: number) => void;
 }
 
-/** 상품 선택: 대분류 → 소분류(상품명) 드롭다운 + 상품명 검색 */
-export function ProductPicker({ productId, onChange }: ProductPickerProps) {
-  const product = PRODUCTS.find((p) => p.id === productId) ?? PRODUCTS[0];
+/** 상품 선택: 대분류 → 상품명 드롭다운 + 상품명 검색 */
+export function ProductPicker({ products, productId, onChange }: ProductPickerProps) {
+  const product = products.find((p) => p.id === productId) ?? products[0];
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const inCategory = PRODUCTS.filter((p) => p.category === product.category);
+  // 상품이 있는 대분류만
+  const categories = PRODUCT_CATEGORIES.filter((c) => products.some((p) => p.category === c));
+  const inCategory = products.filter((p) => p.category === product.category);
   const keyword = query.replace(/\s+/g, "").toLowerCase();
   const results = keyword
-    ? PRODUCTS.filter((p) => `${p.name}${p.category}`.replace(/\s+/g, "").toLowerCase().includes(keyword))
+    ? products.filter((p) => `${p.name}${p.category}`.replace(/\s+/g, "").toLowerCase().includes(keyword))
     : [];
 
   const handleCategory = (category: ProductCategory) => {
-    const first = PRODUCTS.find((p) => p.category === category);
+    const first = products.find((p) => p.category === category);
     if (first) onChange(first.id);
   };
 
-  const pick = (id: string) => {
+  const pick = (id: number) => {
     onChange(id);
     setQuery("");
     setSearchOpen(false);
@@ -43,7 +46,7 @@ export function ProductPicker({ productId, onChange }: ProductPickerProps) {
         onChange={(e) => handleCategory(e.target.value as ProductCategory)}
         className={inputClass}
       >
-        {PRODUCT_CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <option key={c} value={c}>
             {c}
           </option>
@@ -53,7 +56,7 @@ export function ProductPicker({ productId, onChange }: ProductPickerProps) {
       <select
         aria-label="상품명"
         value={product.id}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(Number(e.target.value))}
         className={inputClass}
       >
         {inCategory.map((p) => (
