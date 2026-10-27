@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CircleAlert, Eye, EyeOff, Lock, UserRound } from "lucide-react";
+import { LOGO_SRC } from "@/components/layout/Logo";
 import { useAuthStore } from "@/lib/auth";
 import { login, LoginError } from "@/lib/authApi";
 import { cn } from "@/lib/utils";
@@ -54,8 +56,8 @@ export default function LoginPage() {
       <main className="relative w-full max-w-[400px] animate-rise">
         {/* 브랜드 */}
         <div className="mb-8 text-center text-white">
-          <span className="mx-auto grid size-16 place-items-center rounded-[22px] bg-white text-3xl font-extrabold text-brand-600 shadow-xl">
-            W
+          <span className="mx-auto grid size-16 place-items-center rounded-[22px] bg-white p-2.5 shadow-xl">
+            <Image src={LOGO_SRC} alt="" width={44} height={44} priority unoptimized className="size-full object-contain" />
           </span>
           <h1 className="mt-4 text-[28px] font-extrabold tracking-tight">
             WON<span className="text-sky-200">mate</span>

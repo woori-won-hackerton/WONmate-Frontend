@@ -234,7 +234,7 @@ function BottomTabBar({ pathname }: { pathname: string }) {
               <Link
                 href={href}
                 className={cn(
-                  "relative flex flex-col items-center gap-1 rounded-2xl py-1.5 text-[11px] font-semibold transition-colors",
+                  "relative flex flex-col items-center gap-1 whitespace-nowrap rounded-2xl py-1.5 text-[11px] font-semibold tracking-tight transition-colors",
                   active ? "text-brand-600" : "text-muted",
                 )}
               >

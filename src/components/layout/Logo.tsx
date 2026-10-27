@@ -1,15 +1,17 @@
+import Image from "next/image";
 import Link from "next/link";
 
+/** 로고 파일 경로 — public/logo.svg */
+export const LOGO_SRC = "/logo.svg";
+
 /**
- * WONmate 워드마크 (오리지널 플레이스홀더).
- * 공식 로고 파일을 받으면 public/에 넣고 이 컴포넌트만 교체하세요.
+ * WONmate 로고 (사이드바 · 모바일 상단 바)
+ * - 로고 파일만 바꾸려면 public/logo.svg 를 교체하면 돼요
  */
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <Link href="/" className="flex items-center gap-2.5" aria-label="WONmate 홈">
-      <span className="grid size-9 place-items-center rounded-xl bg-linear-to-br from-brand-600 to-sky-accent text-base font-extrabold text-white shadow-sm">
-        W
-      </span>
+      <Image src={LOGO_SRC} alt="" width={36} height={36} priority unoptimized className="size-9 object-contain" />
       <span className="leading-tight">
         <span className="block text-[17px] font-extrabold tracking-tight text-ink">
           <span className="text-brand-600">WON</span>mate
