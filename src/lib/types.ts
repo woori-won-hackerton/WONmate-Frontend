@@ -9,13 +9,6 @@ export const CONSULT_TYPE_LABEL: Record<ConsultType, string> = {
   claim: "보험금 청구 안내",
 };
 
-export interface HealthInfo {
-  /** 민감정보 별도 동의 여부 */
-  consented: boolean;
-  /** 고객이 직접 제공한 내용만 기록 (AI가 추측해서 채우지 않음) */
-  notes: string[];
-}
-
 export interface Customer {
   id: string;
   name: string;
@@ -25,12 +18,6 @@ export interface Customer {
   job: string | null;
   family: string | null;
   region: string | null;
-  /** 월 보험료 예산(만원). null = 확인되지 않음 */
-  monthlyBudget: number | null;
-  interests: string[];
-  /** 타사 계약 확인 여부 */
-  otherCompanyChecked: boolean;
-  health: HealthInfo;
   lastConsultedAt: string | null;
   updatedAt: string;
   source: string;
@@ -60,7 +47,6 @@ export interface Contract {
 
 export interface Briefing {
   summary: string[];
-  unknowns: string[];
   expectedQuestions: string[];
   order: string[];
   cautions: string[];
@@ -132,6 +118,8 @@ export const PRODUCT_CATEGORIES: ProductCategory[] = ["종신보험", "암보험
 
 export interface Product {
   id: string;
+  /** 백엔드 상품 id (챗봇 request의 productId) */
+  apiId: number;
   name: string;
   category: ProductCategory;
 }
@@ -150,50 +138,57 @@ export interface KnowledgeDoc {
   pages: number;
 }
 
-export interface QaSource {
-  docId: string;
-  docTitle: string;
-  version: string;
-  page: number;
-}
+/* ------------------------------------------------------------------ */
+/* 지식 챗봇 — 백엔드 API 계약 (request / response)                      */
+/* ------------------------------------------------------------------ */
 
-/** 지식 챗봇 질문 유형 */
-export type QuestionType = "term" | "concept" | "product" | "compare" | "recommend";
+/** 질문 유형 (백엔드 enum 그대로) */
+export type QuestionType = "TERM_EXPLANATION" | "INSURANCE_CONCEPT" | "PRODUCT_EXPLANATION";
+
+export const QUESTION_TYPES: QuestionType[] = ["TERM_EXPLANATION", "INSURANCE_CONCEPT", "PRODUCT_EXPLANATION"];
 
 export const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
-  term: "용어 설명",
-  concept: "개념 설명",
-  product: "상품 설명",
-  compare: "상품 비교",
-  recommend: "상품 추천",
+  TERM_EXPLANATION: "용어 설명",
+  INSURANCE_CONCEPT: "개념 설명",
+  PRODUCT_EXPLANATION: "상품 설명",
 };
 
-/** answered = 근거 확인 / needs_review = 확정 불가 / insufficient = 근거 부족 / reference = 참고용(FC 판단 필요) */
-export type QaStatus = "answered" | "needs_review" | "insufficient" | "reference";
-
-export interface QaTable {
-  headers: string[];
-  rows: string[][];
+/** 챗봇 request — productId는 상품 설명일 때만 */
+export interface ChatRequest {
+  questionType: QuestionType;
+  productId?: number;
+  question: string;
+  topK: number;
 }
 
-export interface QaAnswer {
-  status: QaStatus;
+/** 챗봇 response의 근거 문서 */
+export interface ChatSource {
+  productId: number | null;
+  documentId: number;
+  documentName: string;
+  /** 예: TERMS, SUMMARY */
+  documentType: string;
+  chunkId: number;
+  sectionTitle: string | null;
+  startPage: number | null;
+  endPage: number | null;
+}
+
+/** 챗봇 response */
+export interface ChatResponse {
   answer: string;
-  /** 상품 비교·추천 결과 표 */
-  table?: QaTable;
-  conditions: string[];
-  cautions: string[];
-  sources: QaSource[];
+  sources: ChatSource[];
 }
 
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
-  qType?: QuestionType;
+  questionType?: QuestionType;
   /** 상품 설명 질문일 때 선택한 상품명 */
   productName?: string;
-  answer?: QaAnswer;
+  /** assistant 메시지일 때 근거 문서 */
+  sources?: ChatSource[];
 }
 
 /** 로그인한 FC (계정은 시스템/DB에서 발급, 회원가입 없음) */

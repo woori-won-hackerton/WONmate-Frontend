@@ -3,16 +3,8 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import {
-  CalendarPlus,
-  Check,
-  CheckCircle2,
-  ChevronLeft,
-  FileCheck2,
-  FileX,
-  NotebookPen,
-  Sparkles,
-} from "lucide-react";
+import { CheckCircle2, ChevronLeft, FileCheck2, FileX, NotebookPen, Sparkles } from "lucide-react";
+import { AI_STEPS, AiProgress } from "@/components/ui/AiProgress";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -25,8 +17,8 @@ import { useCurrentUser } from "@/lib/auth";
 import { confirmDialog, toast } from "@/lib/feedback";
 import { findCustomer } from "@/lib/mock";
 import { useAppStore } from "@/lib/store";
-import { CONSULT_TYPE_LABEL, type RecordStatus, type RecordSummary } from "@/lib/types";
-import { addDays, cn, formatDate, formatDateTime, inputClass } from "@/lib/utils";
+import { CONSULT_TYPE_LABEL, type RecordSummary } from "@/lib/types";
+import { cn, formatDate, inputClass } from "@/lib/utils";
 
 const FIELDS: { key: keyof RecordSummary; label: string; hint: string }[] = [
   { key: "needs", label: "고객 요구", hint: "고객이 원하거나 걱정한 것" },
@@ -36,53 +28,15 @@ const FIELDS: { key: keyof RecordSummary; label: string; hint: string }[] = [
   { key: "nextActions", label: "다음 행동", hint: "누가, 언제까지, 무엇을" },
 ];
 
-const STEPS: { status: RecordStatus; label: string }[] = [
-  { status: "memo", label: "메모 저장" },
-  { status: "ai_draft", label: "AI 초안" },
-  { status: "confirmed", label: "기록 확정" },
-];
-
-/** 메모 → AI 초안 → 확정 진행 단계 */
-function StatusSteps({ status }: { status: RecordStatus }) {
-  const current = STEPS.findIndex((s) => s.status === status);
-  return (
-    <ol className="flex items-center gap-1.5">
-      {STEPS.map((s, i) => {
-        const done = i < current || status === "confirmed";
-        const active = i === current;
-        return (
-          <li key={s.status} className="flex items-center gap-1.5">
-            <span
-              className={cn(
-                "flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition",
-                active && status !== "confirmed" && "bg-brand-600 text-white",
-                done && "bg-emerald-50 text-emerald-700",
-                !active && !done && "bg-gray-100 text-muted",
-              )}
-            >
-              {done && <Check className="size-3" strokeWidth={3} />}
-              {s.label}
-            </span>
-            {i < STEPS.length - 1 && <span className="h-px w-3 bg-line" />}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
 export default function RecordDetailPage() {
   const { id } = useParams<{ id: string }>();
   const mounted = useMounted();
   const record = useAppStore((s) => s.records.find((r) => r.id === id));
   const updateRecord = useAppStore((s) => s.updateRecord);
   const confirmRecord = useAppStore((s) => s.confirmRecord);
-  const addScheduleItem = useAppStore((s) => s.addScheduleItem);
   const user = useCurrentUser();
 
   const [generating, setGenerating] = useState(false);
-  const [followDate, setFollowDate] = useState(addDays(7));
-  const [followTitle, setFollowTitle] = useState("");
 
   if (!mounted) return <LoadingBlock />;
 
@@ -116,31 +70,24 @@ export default function RecordDetailPage() {
   const handleConfirm = async () => {
     if (!summary) return;
     const ok = await confirmDialog({
-      title: "기록을 확정할까요?",
+      title: "상담 요약을 확정할까요?",
       description: "확정하면 수정할 수 없어요. 실제 상담 내용과 일치하는지 확인해 주세요.",
       confirmText: "확정하기",
     });
     if (!ok) return;
     confirmRecord(record.id, user.name);
-    toast.success("상담 기록을 확정했어요");
-  };
-
-  const handleFollowUp = () => {
-    const title = followTitle.trim() || `${customer?.name ?? ""} 고객 후속 연락`;
-    addScheduleItem({ kind: "task", title, date: followDate, customerId: record.customerId, done: false });
-    setFollowTitle("");
-    toast.success(`'${title}' 할 일을 ${formatDate(followDate)}에 등록했어요`);
+    toast.success("AI 상담 요약을 확정했어요");
   };
 
   return (
     <div className="animate-rise space-y-5 lg:space-y-6">
       <Link href="/records" className="inline-flex items-center gap-1 text-sm font-semibold text-sub hover:text-ink">
         <ChevronLeft className="size-4" />
-        상담 기록
+        AI 상담 요약
       </Link>
 
       {/* 헤더 */}
-      <Card className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <Card>
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-extrabold tracking-tight text-ink">{customer?.name ?? "알 수 없음"} 고객</h1>
@@ -148,14 +95,9 @@ export default function RecordDetailPage() {
           </div>
           <p className="mt-1 text-sm text-muted">{formatDate(record.date, true)} 상담</p>
         </div>
-        <StatusSteps status={record.status} />
       </Card>
 
-      {isConfirmed ? (
-        <Notice tone="green">
-          확정된 기록이에요 · {record.confirmedBy} FC · {formatDateTime(record.confirmedAt)}
-        </Notice>
-      ) : (
+      {!isConfirmed && (
         <Notice tone="amber">
           AI 요약은 설명의무 이행이나 적합성 확인의 증거가 아니에요. 실제로 한 설명과 확인만 남기고, 하지
           않은 내용은 지워주세요.
@@ -194,10 +136,12 @@ export default function RecordDetailPage() {
         <Card>
           <CardHeader
             icon={FileCheck2}
-            title="상담 기록"
+            title="AI 상담 요약"
             right={summary && !isConfirmed ? <Badge tone="sky">AI 초안 · 수정 가능</Badge> : undefined}
           />
-          {!summary ? (
+          {generating ? (
+            <AiProgress steps={AI_STEPS.record} />
+          ) : !summary ? (
             <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-line text-center text-sm text-muted">
               왼쪽 메모로 AI 초안을 만들어 주세요.
             </div>
@@ -229,33 +173,13 @@ export default function RecordDetailPage() {
             </div>
           )}
           {!isConfirmed && (
-            <Button className="mt-5 w-full" size="lg" onClick={handleConfirm} disabled={!summary}>
+            <Button className="mt-5 w-full" size="lg" onClick={handleConfirm} disabled={!summary || generating}>
               <CheckCircle2 className="size-4" />
               기록 확정
             </Button>
           )}
         </Card>
       </div>
-
-      <Card>
-        <CardHeader icon={CalendarPlus} title="후속 할 일 등록" />
-        <div className="grid gap-2 md:grid-cols-[180px_1fr_auto]">
-          <input
-            type="date"
-            value={followDate}
-            onChange={(e) => setFollowDate(e.target.value)}
-            className={inputClass}
-          />
-          <input
-            value={followTitle}
-            onChange={(e) => setFollowTitle(e.target.value)}
-            placeholder={`${customer?.name ?? ""} 고객 후속 연락`}
-            className={inputClass}
-          />
-          <Button onClick={handleFollowUp}>등록</Button>
-        </div>
-        <p className="mt-2 text-xs text-muted">등록한 할 일은 홈의 ‘해야 할 일’에 나와요.</p>
-      </Card>
     </div>
   );
 }

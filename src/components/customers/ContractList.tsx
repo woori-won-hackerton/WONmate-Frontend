@@ -10,7 +10,7 @@ const STATUS_TONE: Record<ContractStatus, BadgeTone> = {
 
 export function ContractList({ contracts }: { contracts: Contract[] }) {
   if (!contracts.length) {
-    return <p className="py-6 text-center text-sm text-muted">자사 연동 계약이 없어요.</p>;
+    return <p className="py-6 text-center text-sm text-muted">보유 계약이 없어요.</p>;
   }
 
   return (

@@ -15,13 +15,13 @@ const STEPS = [
     visual: <BriefingVisual />,
   },
   {
-    eyebrow: "지식 챗봇",
+    eyebrow: "AI 챗봇",
     title: "근거 있는 답만\n알려줘요",
-    desc: "용어·개념부터 상품 설명·비교까지, 근거 문서와 함께 답하고 근거가 없으면 보류해요.",
+    desc: "용어·개념부터 상품 설명까지, 근거 문서와 함께 답하고 근거가 없으면 보류해요.",
     visual: <QaVisual />,
   },
   {
-    eyebrow: "상담 기록",
+    eyebrow: "AI 상담 요약",
     title: "초안은 AI가,\n확정은 FC님이",
     desc: "상담 메모를 항목별 초안으로 정리해요. 최종 확정은 FC님이 해요.",
     visual: <RecordVisual />,

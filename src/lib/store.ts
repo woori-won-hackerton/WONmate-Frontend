@@ -17,7 +17,7 @@ interface DemoData {
 
 interface AppState extends DemoData {
   savePrepDraft: (draft: PrepDraft) => void;
-  /** 상담 준비 완료 → 상담 기록(메모 상태) 생성. 생성된 record id 반환 */
+  /** 상담 완료 → 일정 완료 처리 + 상담 기록(메모 상태) 생성. 생성된 record id 반환 */
   finishPrep: (scheduleId: string) => string | null;
   updateRecord: (id: string, patch: Partial<ConsultationRecord>) => void;
   confirmRecord: (id: string, confirmedBy: string) => void;
@@ -71,7 +71,12 @@ export const useAppStore = create<AppState>()(
         set((s) => {
           const rest = { ...s.prepDrafts };
           delete rest[scheduleId];
-          return { records: [record, ...s.records], prepDrafts: rest };
+          return {
+            records: [record, ...s.records],
+            prepDrafts: rest,
+            // 상담 완료 → 해당 상담 일정 완료 처리
+            schedule: s.schedule.map((i) => (i.id === scheduleId ? { ...i, done: true } : i)),
+          };
         });
         return id;
       },
@@ -119,7 +124,7 @@ export const useAppStore = create<AppState>()(
       name: "fc-professor-demo",
       storage: createJSONStorage(() => localStorage),
       // 데이터 구조가 바뀌면 version을 올려서 예전 브라우저 데이터를 초기화
-      version: 2,
+      version: 3,
       migrate: () => initialData() as AppState,
     },
   ),

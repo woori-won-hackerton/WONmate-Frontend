@@ -53,6 +53,17 @@
     }
   }
 
+  /* AI 작업 중 카드의 반짝이는 띠 (animate-shimmer) */
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+  @keyframes shimmer {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(400%);
+    }
+  }
+
   /* 로그인 실패 시 흔들림 (animate-shake) */
   --animate-shake: shake 0.4s ease-in-out;
   @keyframes shake {

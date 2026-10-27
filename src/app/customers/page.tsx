@@ -71,16 +71,14 @@ export default function CustomersPage() {
                   </div>
 
                   <div className="mt-3 flex min-h-6 flex-wrap gap-1.5">
-                    {nextConsult && <Badge tone="sky">다음 상담 {formatDate(nextConsult.date).slice(5)}</Badge>}
-                    {c.interests.length ? (
-                      c.interests.map((i) => (
-                        <Badge key={i} tone="brand">
-                          {i}
-                        </Badge>
-                      ))
+                    {nextConsult ? (
+                      <Badge tone="sky">
+                        다음 상담 {formatDate(nextConsult.date).slice(5)} {nextConsult.time}
+                      </Badge>
                     ) : (
-                      <Badge>관심사 미확인</Badge>
+                      <Badge>예정된 상담 없음</Badge>
                     )}
+                    {c.region && <Badge>{c.region}</Badge>}
                   </div>
 
                   <dl className="mt-4 grid grid-cols-3 divide-x divide-line rounded-2xl bg-surface py-3 text-center">

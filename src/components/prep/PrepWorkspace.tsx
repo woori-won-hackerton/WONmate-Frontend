@@ -2,24 +2,25 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, CalendarPlus, Lightbulb, ShieldCheck, Sparkles } from "lucide-react";
+import { CalendarPlus, CheckCircle2, ShieldCheck, Sparkles } from "lucide-react";
 import { ContractList } from "@/components/customers/ContractList";
 import { AddConsultDialog } from "@/components/schedule/AddConsultDialog";
+import { AI_STEPS, AiProgress } from "@/components/ui/AiProgress";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
 import { generateBriefing } from "@/lib/api";
+import { confirmDialog, toast } from "@/lib/feedback";
 import { contractsOf, findCustomer } from "@/lib/mock";
 import { useAppStore } from "@/lib/store";
 import { CONSULT_TYPE_LABEL, type PrepDraft, type ScheduleItem } from "@/lib/types";
 import { formatDate, inputClass, toLocalISODate } from "@/lib/utils";
 import { MemoPanel } from "./MemoPanel";
 import { BriefingCard, ExpectedQuestions, RequiredChecks } from "./PrepSections";
-import { REQUIRED_CHECKS, TIPS } from "./tips";
+import { REQUIRED_CHECKS } from "./tips";
 
 const byDateTime = (a: ScheduleItem, b: ScheduleItem) =>
   a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? "");
@@ -40,6 +41,7 @@ export function PrepWorkspace() {
   const [picked, setPicked] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [memoDirty, setMemoDirty] = useState(false);
 
   if (!mounted) return <LoadingBlock />;
 
@@ -96,15 +98,35 @@ export function PrepWorkspace() {
         briefing,
         qa: briefing.expectedQuestions.map((q) => ({ question: q, answerMemo: prevMemos.get(q) ?? "" })),
       });
+    } catch {
+      toast.error("브리핑을 만들지 못했어요. 잠시 후 다시 시도해 주세요.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFinish = () => {
-    if (!item) return;
+  const handleSaveAnswer = (index: number, answerMemo: string) => {
+    const qa = (draft?.qa ?? []).map((q, i) => (i === index ? { ...q, answerMemo } : q));
+    update({ qa });
+    toast.success("답변 메모를 저장했어요");
+  };
+
+  const handleFinish = async () => {
+    if (!item || !customer) return;
+    const ok = await confirmDialog({
+      title: "상담을 완료할까요?",
+      description: memoDirty
+        ? "저장하지 않은 메모가 있어요. 저장하지 않은 내용은 AI 상담 요약에 들어가지 않아요."
+        : "저장한 상담 메모와 답변 메모가 AI 상담 요약으로 넘어가요.",
+      confirmText: "상담 완료",
+    });
+    if (!ok) return;
+    if (!draft) update({}); // 메모 없이 완료해도 기록은 만들어지게
     const id = finishPrep(item.id);
-    if (id) router.push(`/records/${id}`);
+    if (id) {
+      toast.success(`${customer.name} 고객 상담을 완료했어요`);
+      router.push(`/records/${id}`);
+    }
   };
 
   return (
@@ -114,35 +136,24 @@ export function PrepWorkspace() {
         description="상담 일정을 고르면 AI가 지난 기록을 바탕으로 브리핑을 만들어요."
       />
 
-      {/* 상담 일정 선택 — 상담 종류는 일정 추가할 때 정하고 여기서는 보여주기만 */}
+      {/* 상담 일정 선택 — 상담 종류·일시·고객은 드롭다운에 함께 표시 */}
       <Card className="mb-6">
-        <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-          <div className="min-w-0">
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-sub">상담 일정</span>
-              <select value={scheduleId} onChange={(e) => setPicked(e.target.value)} className={inputClass}>
-                <option value="">상담 일정을 선택하세요</option>
-                {options.map((o) => {
-                  const c = o.customerId ? findCustomer(o.customerId) : undefined;
-                  return (
-                    <option key={o.id} value={o.id}>
-                      {formatDate(o.date, true)} {o.time} · {c?.name ?? "고객 미지정"} ·{" "}
-                      {o.consultType ? CONSULT_TYPE_LABEL[o.consultType] : "상담"}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-            {item && customer && (
-              <p className="mt-2.5 text-sm text-sub">
-                상담 종류 <span className="font-bold text-brand-700">{CONSULT_TYPE_LABEL[type]}</span>
-                <span className="mx-2 text-line">|</span>
-                {formatDate(item.date, true)} {item.time}
-                <span className="mx-2 text-line">|</span>
-                {customer.name} 고객 ({customer.age}세)
-              </p>
-            )}
-          </div>
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-sm font-semibold text-sub">상담 일정</span>
+            <select value={scheduleId} onChange={(e) => setPicked(e.target.value)} className={inputClass}>
+              <option value="">상담 일정을 선택하세요</option>
+              {options.map((o) => {
+                const c = o.customerId ? findCustomer(o.customerId) : undefined;
+                return (
+                  <option key={o.id} value={o.id}>
+                    {formatDate(o.date, true)} {o.time} · {c?.name ?? "고객 미지정"} ·{" "}
+                    {o.consultType ? CONSULT_TYPE_LABEL[o.consultType] : "상담"}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
 
           <div className="flex gap-2">
             <Button variant="outline" size="lg" onClick={() => setDialogOpen(true)}>
@@ -151,7 +162,7 @@ export function PrepWorkspace() {
             </Button>
             <Button size="lg" onClick={handleGenerate} loading={loading} disabled={!customer} className="flex-1">
               {!loading && <Sparkles className="size-4" />}
-              {draft?.briefing ? "브리핑 다시 만들기" : "브리핑 생성"}
+              {draft?.briefing ? "AI 브리핑 다시 만들기" : "AI 브리핑 생성"}
             </Button>
           </div>
         </div>
@@ -178,7 +189,9 @@ export function PrepWorkspace() {
           <div className="min-w-0 space-y-6">
             <RequiredChecks items={REQUIRED_CHECKS} />
 
-            {draft?.briefing ? (
+            {loading ? (
+              <AiProgress steps={AI_STEPS.briefing} />
+            ) : draft?.briefing ? (
               <BriefingCard briefing={draft.briefing} />
             ) : (
               <Card className="border-dashed text-center">
@@ -192,51 +205,38 @@ export function PrepWorkspace() {
 
             <Card>
               <CardHeader icon={ShieldCheck} title="현재 유지 중인 계약" />
-              {!customer.otherCompanyChecked && (
-                <Notice tone="amber" className="mb-3">
-                  타사 계약은 확인되지 않았어요. 상담 중에 직접 확인해 주세요.
-                </Notice>
-              )}
               <ContractList contracts={contracts} />
             </Card>
 
-            {draft?.briefing && <ExpectedQuestions qa={draft.qa} onChange={(qa) => update({ qa })} />}
+            {draft?.briefing && !loading && (
+              <ExpectedQuestions key={draft.briefing.generatedAt} qa={draft.qa} onSave={handleSaveAnswer} />
+            )}
           </div>
 
-          {/* 우측 고정: 메모(고객 위키 / 상담 메모) · 준비 완료 · 팁 */}
+          {/* 우측 고정: 메모(고객 위키 / 상담 메모) · 상담 완료 */}
           <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
             <MemoPanel
               key={item.id}
               customerName={customer.name}
               wiki={wikiDoc?.content ?? ""}
               wikiUpdatedAt={wikiDoc?.updatedAt}
-              onWikiChange={(value) => saveWiki(customer.id, value)}
+              onWikiSave={(value) => {
+                saveWiki(customer.id, value);
+                toast.success("고객 위키를 저장했어요");
+              }}
               memo={draft?.memo ?? ""}
               memoUpdatedAt={draft?.updatedAt || undefined}
-              onMemoChange={(value) => update({ memo: value })}
+              onMemoSave={(value) => {
+                update({ memo: value });
+                toast.success("상담 메모를 저장했어요");
+              }}
+              onDirtyChange={setMemoDirty}
             />
 
-            <Card className="p-4 sm:p-5">
-              <p className="text-sm font-bold text-ink">
-                {customer.name} 고객 · {CONSULT_TYPE_LABEL[type]}
-              </p>
-              <p className="mt-1 text-xs text-muted">준비를 마치면 상담 메모가 상담 기록으로 넘어가요.</p>
-              <Button className="mt-3 w-full" size="lg" onClick={handleFinish} disabled={!draft}>
-                준비 완료 · 상담 기록으로
-                <ArrowRight className="size-4" />
-              </Button>
-            </Card>
-
-            <Card className="border-brand-100 bg-brand-50/60 p-4 sm:p-5">
-              <CardHeader icon={Lightbulb} title="곁의 상담 팁" />
-              <ul className="space-y-3">
-                {TIPS[type].map((tip) => (
-                  <li key={tip} className="text-sm leading-relaxed text-ink">
-                    · {tip}
-                  </li>
-                ))}
-              </ul>
-            </Card>
+            <Button className="w-full" size="lg" onClick={handleFinish}>
+              <CheckCircle2 className="size-5" />
+              상담 완료
+            </Button>
           </aside>
         </div>
       )}

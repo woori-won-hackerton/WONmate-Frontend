@@ -40,7 +40,7 @@ export default function RecordsPage() {
   return (
     <div className="animate-rise">
       <PageHeader
-        title="상담 기록"
+        title="AI 상담 요약"
         description="저장한 상담 메모를 AI 초안으로 정리하고, 확인 후 기록을 확정해요."
       />
 
@@ -68,7 +68,7 @@ export default function RecordsPage() {
         <EmptyState
           icon={FileText}
           title={tab === "open" ? "작성 중인 기록이 없어요" : "확정된 기록이 없어요"}
-          description={tab === "open" ? "상담 준비에서 ‘준비 완료’를 누르면 여기로 넘어와요." : undefined}
+          description={tab === "open" ? "상담 준비에서 ‘상담 완료’를 누르면 여기로 넘어와요." : undefined}
         />
       ) : (
         <Card className="p-2 sm:p-2">

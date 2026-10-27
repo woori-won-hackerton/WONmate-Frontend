@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, FileText, Search, Upload } from "lucide-react";
+import { ChevronRight, FileText, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -28,16 +28,7 @@ export default function LibraryPage() {
     <div>
       <PageHeader
         title="지식 자료실"
-        description="지식 챗봇이 참고하는 약관·상품설명서·업무지침이에요."
-        actions={
-          <Button
-            variant="outline"
-            onClick={() => toast.info("문서 등록은 백엔드 연동 후 지식 관리자에게 열려요")}
-          >
-            <Upload className="size-4" />
-            문서 등록
-          </Button>
-        }
+        description="AI 챗봇이 참고하는 약관·상품설명서·업무지침이에요."
       />
 
       <div className="relative mb-4 sm:max-w-xs">

@@ -98,9 +98,7 @@ export const GLOSSARY: GlossaryEntry[] = [
 ];
 
 /** 질문 유형별 추천 질문 (상품 설명은 상품별 SUGGESTED_QUESTIONS 사용) */
-export const TYPE_SUGGESTIONS: Record<Exclude<QuestionType, "product">, string[]> = {
-  term: ["면책기간이 뭐예요?", "해지환급금이 뭐예요?", "고지의무가 뭐예요?"],
-  concept: ["갱신형과 비갱신형 차이가 뭐예요?", "종신보험과 정기보험은 어떻게 달라요?", "실손보험 여러 개 가입하면 다 받나요?"],
-  compare: ["평생 종신보험이랑 우리가족 종신보험 비교해줘", "든든 암보험과 3대질병 암보험 차이가 뭐야?"],
-  recommend: ["5살 자녀가 있는 30대 고객에게 볼 만한 상품은?", "암 보장을 걱정하는 40대 고객에게 맞는 상품은?"],
+export const TYPE_SUGGESTIONS: Record<Exclude<QuestionType, "PRODUCT_EXPLANATION">, string[]> = {
+  TERM_EXPLANATION: ["면책기간이 뭐예요?", "해지환급금이 뭐예요?", "고지의무가 뭐예요?"],
+  INSURANCE_CONCEPT: ["갱신형과 비갱신형 차이가 뭐예요?", "종신보험과 정기보험은 어떻게 달라요?", "실손보험 여러 개 가입하면 다 받나요?"],
 };

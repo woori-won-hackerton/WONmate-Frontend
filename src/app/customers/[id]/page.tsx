@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { CalendarPlus, ChevronLeft, ChevronRight, FileText, HeartPulse, IdCard, ShieldCheck, Sparkles, UserX } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight, FileText, IdCard, ShieldCheck, Sparkles, UserX } from "lucide-react";
 import { ContractList } from "@/components/customers/ContractList";
 import { CustomerWiki } from "@/components/customers/CustomerWiki";
 import { AddConsultDialog } from "@/components/schedule/AddConsultDialog";
@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Notice } from "@/components/ui/Notice";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
 import { contractsOf, findCustomer } from "@/lib/mock";
@@ -108,69 +107,16 @@ export default function CustomerDetailPage() {
         </div>
       </Card>
 
-      <div className="grid gap-5 lg:grid-cols-3 lg:gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader icon={IdCard} title="기본 정보" />
-          <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <InfoTile label="연락처" value={customer.phone} />
-            <InfoTile label="직업" value={customer.job} />
-            <InfoTile label="가족" value={customer.family} />
-            <InfoTile label="거주 지역" value={customer.region} />
-            <InfoTile
-              label="월 보험료 예산"
-              value={customer.monthlyBudget !== null ? `${customer.monthlyBudget}만원 이내` : null}
-            />
-            <InfoTile label="타사 계약" value={customer.otherCompanyChecked ? "확인 완료" : null} />
-            <InfoTile label="장애 유무" value={customer.disability} />
-          </dl>
-          <div className="mt-5">
-            <p className="mb-2 text-sm font-bold text-sub">고객이 밝힌 관심사</p>
-            <div className="flex flex-wrap gap-1.5">
-              {customer.interests.length ? (
-                customer.interests.map((i) => (
-                  <Badge key={i} tone="brand">
-                    {i}
-                  </Badge>
-                ))
-              ) : (
-                <Badge tone="amber">확인되지 않음</Badge>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader
-            icon={HeartPulse}
-            title="건강 정보"
-            right={
-              <Badge tone={customer.health.consented ? "green" : "gray"}>
-                {customer.health.consented ? "민감정보 동의" : "동의 전"}
-              </Badge>
-            }
-          />
-          {customer.health.consented ? (
-            customer.health.notes.length ? (
-              <ul className="space-y-2">
-                {customer.health.notes.map((n) => (
-                  <li key={n} className="rounded-2xl bg-surface p-3 text-sm text-ink">
-                    {n}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted">고객이 제공한 내용이 없어요.</p>
-            )
-          ) : (
-            <p className="rounded-2xl bg-surface p-3 text-sm text-muted">
-              건강정보 제공 동의 전이라 조회할 수 없어요. 병력은 묻거나 추정하지 않아요.
-            </p>
-          )}
-          <p className="mt-4 text-xs leading-relaxed text-muted">
-            고객이 직접 제공한 내용만 표시하며, 고지의무 안내 목적으로만 사용해요.
-          </p>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader icon={IdCard} title="기본 정보" />
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <InfoTile label="연락처" value={customer.phone} />
+          <InfoTile label="직업" value={customer.job} />
+          <InfoTile label="가족" value={customer.family} />
+          <InfoTile label="거주 지역" value={customer.region} />
+          <InfoTile label="장애 유무" value={customer.disability} />
+        </dl>
+      </Card>
 
       <CustomerWiki customerId={customer.id} />
 
@@ -178,13 +124,8 @@ export default function CustomerDetailPage() {
         <CardHeader
           icon={ShieldCheck}
           title="보유 계약"
-          right={<span className="text-sm text-muted">자사 연동 {contracts.length}건</span>}
+          right={<span className="text-sm text-muted">{contracts.length}건</span>}
         />
-        {!customer.otherCompanyChecked && (
-          <Notice tone="amber" className="mb-3">
-            타사 계약은 아직 확인되지 않았어요. ‘보험 없음’이 아니라 ‘확인되지 않음’ 상태예요.
-          </Notice>
-        )}
         <ContractList contracts={contracts} />
       </Card>
 

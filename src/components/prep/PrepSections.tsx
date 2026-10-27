@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, MessageSquareQuote, ShieldAlert, TriangleAlert } from "lucide-react";
+import { Bot, MessageSquareQuote, Save, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import type { Briefing, ExpectedQA } from "@/lib/types";
 import { cn, formatDateTime, inputClass } from "@/lib/utils";
@@ -10,7 +11,7 @@ import { cn, formatDateTime, inputClass } from "@/lib/utils";
 export function BriefingCard({ briefing }: { briefing: Briefing }) {
   return (
     <Card>
-      <CardHeader icon={Bot} title="요약 브리핑" right={<Badge tone="sky">AI 초안 · FC 확인 필요</Badge>} />
+      <CardHeader icon={Bot} title="AI 브리핑" right={<Badge tone="sky">AI 초안 · FC 확인 필요</Badge>} />
 
       <ul className="space-y-2">
         {briefing.summary.map((s) => (
@@ -20,18 +21,6 @@ export function BriefingCard({ briefing }: { briefing: Briefing }) {
           </li>
         ))}
       </ul>
-
-      {briefing.unknowns.length > 0 && (
-        <div className="mt-5 rounded-xl bg-amber-50 p-4">
-          <p className="mb-2 flex items-center gap-1.5 text-sm font-bold text-amber-800">
-            <TriangleAlert className="size-4" />
-            확인되지 않은 정보
-          </p>
-          <ul className="space-y-1 text-sm text-amber-900">
-            {briefing.unknowns.map((u) => <li key={u}>· {u}</li>)}
-          </ul>
-        </div>
-      )}
 
       <div className="mt-5">
         <p className="mb-2 text-sm font-bold text-sub">권장 상담 순서</p>
@@ -79,12 +68,15 @@ export function RequiredChecks({ items }: { items: string[] }) {
 
 export function ExpectedQuestions({
   qa,
-  onChange,
+  onSave,
 }: {
   qa: ExpectedQA[];
-  onChange: (qa: ExpectedQA[]) => void;
+  /** 답변 메모 저장 (index, 메모) */
+  onSave: (index: number, answerMemo: string) => void;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  // 저장 전 입력 중인 답변 (질문 index → 메모)
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
 
   return (
     <Card>
@@ -92,27 +84,50 @@ export function ExpectedQuestions({
       <ul className="space-y-2">
         {qa.map((item, i) => {
           const open = openIndex === i;
+          const value = drafts[i] ?? item.answerMemo;
+          const dirty = value !== item.answerMemo;
           return (
-            <li key={item.question} className="rounded-xl border border-line">
+            <li key={item.question} className="rounded-2xl border border-line">
               <button
                 type="button"
                 onClick={() => setOpenIndex(open ? null : i)}
                 className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
               >
                 <span className="text-sm font-semibold text-ink">Q. {item.question}</span>
-                {item.answerMemo.trim() ? <Badge tone="green">메모됨</Badge> : <Badge>답변 메모</Badge>}
+                {dirty ? (
+                  <Badge tone="amber">저장 안 됨</Badge>
+                ) : item.answerMemo.trim() ? (
+                  <Badge tone="green">메모됨</Badge>
+                ) : (
+                  <Badge>답변 메모</Badge>
+                )}
               </button>
               {open && (
                 <div className="border-t border-line p-3">
                   <textarea
-                    value={item.answerMemo}
-                    onChange={(e) =>
-                      onChange(qa.map((q, idx) => (idx === i ? { ...q, answerMemo: e.target.value } : q)))
-                    }
+                    value={value}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [i]: e.target.value }))}
                     rows={3}
-                    placeholder="예상 답변을 메모해 두세요. 약관 근거가 필요하면 지식 챗봇에서 확인하세요."
+                    placeholder="예상 답변을 메모해 두세요. 약관 근거가 필요하면 AI 챗봇에서 확인하세요."
                     className={cn(inputClass, "resize-y")}
                   />
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      size="sm"
+                      disabled={!dirty}
+                      onClick={() => {
+                        onSave(i, value.trim());
+                        setDrafts((d) => {
+                          const next = { ...d };
+                          delete next[i];
+                          return next;
+                        });
+                      }}
+                    >
+                      <Save className="size-3.5" />
+                      답변 저장
+                    </Button>
+                  </div>
                 </div>
               )}
             </li>

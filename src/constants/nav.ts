@@ -23,8 +23,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "홈", short: "홈", icon: Home, tab: true, badge: "pendingTasks" },
   { href: "/customers", label: "담당 고객", short: "고객", icon: Users, tab: true },
   { href: "/prep", label: "상담 준비", short: "상담 준비", icon: Sparkles, tab: true },
-  { href: "/qa", label: "지식 챗봇", short: "챗봇", icon: MessageCircle, tab: true },
-  { href: "/records", label: "상담 기록", short: "기록", icon: FileText, tab: true },
+  { href: "/qa", label: "AI 챗봇", short: "챗봇", icon: MessageCircle, tab: true },
+  { href: "/records", label: "AI 상담 요약", short: "상담 요약", icon: FileText, tab: true },
   { href: "/library", label: "지식 자료실", short: "자료실", icon: BookOpen },
 ];
 
