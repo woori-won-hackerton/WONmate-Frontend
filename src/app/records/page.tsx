@@ -6,14 +6,14 @@ import { ChevronRight, FileText, Search } from "lucide-react";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadError } from "@/components/ui/LoadError";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { Tabs } from "@/components/ui/Tabs";
 import { useMounted } from "@/hooks/useMounted";
-import { useCustomerLookup } from "@/lib/data";
-import { useAppStore } from "@/lib/store";
+import { useCompletedConsults, useCustomerLookup } from "@/lib/data";
 import { CONSULT_TYPE_LABEL, RECORD_STATUS_LABEL, type RecordStatus } from "@/lib/types";
-import { cn, formatDate, inputClass } from "@/lib/utils";
+import { cn, inputClass } from "@/lib/utils";
 
 const STATUS_TONE: Record<RecordStatus, BadgeTone> = {
   memo: "gray",
@@ -21,28 +21,36 @@ const STATUS_TONE: Record<RecordStatus, BadgeTone> = {
   confirmed: "green",
 };
 
+const STATUS_HINT: Record<RecordStatus, string> = {
+  memo: "저장한 메모로 AI 초안을 만들어 주세요",
+  ai_draft: "AI 초안을 확인하고 기록을 확정해 주세요",
+  confirmed: "확정된 상담 기록이에요",
+};
+
 type Tab = "open" | "confirmed";
 
 export default function RecordsPage() {
   const mounted = useMounted();
-  const records = useAppStore((s) => s.records);
+  const { data: records, isLoading, error, reload } = useCompletedConsults();
   const customerOf = useCustomerLookup();
   const [tab, setTab] = useState<Tab>("open");
   const [query, setQuery] = useState("");
 
-  if (!mounted) return <LoadingBlock />;
+  if (!mounted || isLoading) return <LoadingBlock />;
+  if (error) return <LoadError error={error} onRetry={reload} title="AI 상담 요약 목록을 불러오지 못했어요" />;
 
-  const open = records.filter((r) => r.status !== "confirmed");
-  const confirmed = records.filter((r) => r.status === "confirmed");
-  const list = (tab === "open" ? open : confirmed)
-    .filter((r) => (customerOf(r.customerId)?.name ?? "").includes(query.trim()))
-    .sort((a, b) => b.date.localeCompare(a.date));
+  const nameOf = (customerId?: string, fallback?: string) => customerOf(customerId)?.name ?? fallback ?? "알 수 없음";
+  const open = records.filter((r) => r.recordStatus !== "confirmed");
+  const confirmed = records.filter((r) => r.recordStatus === "confirmed");
+  const list = (tab === "open" ? open : confirmed).filter((r) =>
+    nameOf(r.customerId, r.customerName).includes(query.trim()),
+  );
 
   return (
     <div className="animate-rise">
       <PageHeader
         title="AI 상담 요약"
-        description="저장한 상담 메모를 AI 초안으로 정리하고, 확인 후 기록을 확정해요."
+        description="완료한 상담의 메모를 AI 초안으로 정리하고, 확인 후 기록을 확정해요."
       />
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -75,8 +83,7 @@ export default function RecordsPage() {
         <Card className="p-2 sm:p-2">
           <ul className="divide-y divide-line">
             {list.map((r) => {
-              const customer = customerOf(r.customerId);
-              const preview = (r.summary?.needs || r.memo || "메모 없음").split("\n")[0].replace(/^•\s*/, "");
+              const status = r.recordStatus ?? "memo";
               const [, month, day] = r.date.split("-");
               return (
                 <li key={r.id}>
@@ -87,7 +94,7 @@ export default function RecordsPage() {
                     <span
                       className={cn(
                         "tabular grid size-14 shrink-0 place-items-center rounded-2xl text-center leading-tight",
-                        r.status === "confirmed" ? "bg-surface text-sub" : "bg-brand-50 text-brand-700",
+                        status === "confirmed" ? "bg-surface text-sub" : "bg-brand-50 text-brand-700",
                       )}
                     >
                       <span>
@@ -97,11 +104,13 @@ export default function RecordsPage() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <p className="mr-1 font-bold text-ink">{customer?.name ?? "알 수 없음"} 고객</p>
-                        <Badge tone="brand">{CONSULT_TYPE_LABEL[r.type]}</Badge>
-                        <Badge tone={STATUS_TONE[r.status]}>{RECORD_STATUS_LABEL[r.status]}</Badge>
+                        <p className="mr-1 font-bold text-ink">{nameOf(r.customerId, r.customerName)} 고객</p>
+                        {r.consultType && <Badge tone="brand">{CONSULT_TYPE_LABEL[r.consultType]}</Badge>}
+                        <Badge tone={STATUS_TONE[status]}>{RECORD_STATUS_LABEL[status]}</Badge>
                       </div>
-                      <p className="mt-1 truncate text-sm text-sub">{preview}</p>
+                      <p className="mt-1 truncate text-sm text-sub">
+                        {r.time} 상담 · {STATUS_HINT[status]}
+                      </p>
                     </div>
                     <ChevronRight className="size-5 shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-brand-600" />
                   </Link>

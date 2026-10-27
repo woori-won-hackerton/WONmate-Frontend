@@ -1,18 +1,18 @@
 /**
  * AI 처리 계층
- * - AI 브리핑: POST /api/consults/{id}/briefing
+ * - AI 브리핑: POST /api/consults/{id}/briefing · 저장된 브리핑 GET /api/consults/{id}/briefing
  * - AI 상담 요약 초안: lib/data.ts 의 generateAiRecord (POST /api/consults/{id}/ai-record)
  * - AI 챗봇: BACKEND_READY.chat 이 true면 백엔드, 아니면 mock (백엔드 API 준비 중)
  * - 화면 컴포넌트는 이 파일의 함수 시그니처에만 의존
  */
-import { backendApi } from "@/lib/backend";
+import { backendApi, type BriefingDto } from "@/lib/backend";
 import { BACKEND_READY } from "@/lib/config";
-import { apiRequest } from "@/lib/http";
+import { ApiError, apiRequest } from "@/lib/http";
 import { findDoc, GLOSSARY, GLOSSARY_DOC_ID, KNOWLEDGE_CHUNKS, PRODUCTS, type KnowledgeChunk } from "@/lib/mock";
 import type { Briefing, ChatRequest, ChatResponse, ChatSource, ConsultType, DocType } from "@/lib/types";
 import { sleep } from "@/lib/utils";
 
-/** 예상 질문 — 백엔드가 아직 만들지 않아서 상담 종류별 고정값 */
+/** 예상 질문 — AI가 못 만들었을 때(예전 브리핑 등)만 쓰는 상담 종류별 기본값 */
 const QUESTIONS_BY_TYPE: Record<ConsultType, string[]> = {
   new: ["지금 꼭 필요한 보험이 뭐예요?", "보험료는 한 달에 얼마 정도가 적당해요?", "다른 보험이랑 겹치는 건 없나요?"],
   review: ["지금 보험료를 줄일 방법이 있을까요?", "제 보험으로 암 진단비는 얼마 나와요?", "해지하면 손해인가요?"],
@@ -33,21 +33,37 @@ const FIXED_CAUTIONS = [
 ];
 
 /**
- * AI 브리핑 생성
- * - 요약(summary): 백엔드 AI가 고객 위키 + 완료된 이전 상담(메모 · AI 기록)으로 작성
- * - 예상 질문 · 상담 순서 · 주의 문구: 상담 종류별 고정값
+ * 백엔드 브리핑 → 화면용 브리핑
+ * - 요약 · 예상 질문: 백엔드 AI (고객 위키 + 완료된 이전 상담으로 작성)
+ * - 상담 순서 · 주의 문구: 상담 종류별 고정값
  *   (백엔드가 주는 unconfirmedInformation · consultationTips 는 화면에서 뺐으므로 사용 안 함)
  */
-export async function generateBriefing(scheduleId: string, type: ConsultType): Promise<Briefing> {
-  const res = await backendApi.generateBriefing(scheduleId);
+function toBriefing(res: BriefingDto, type: ConsultType, generatedAt: string): Briefing {
   return {
     summary: res.summary,
-    expectedQuestions: QUESTIONS_BY_TYPE[type],
+    expectedQuestions: res.expectedQuestions?.length ? res.expectedQuestions : QUESTIONS_BY_TYPE[type],
     order: ORDER_BY_TYPE[type],
     cautions: FIXED_CAUTIONS,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     modelVersion: "WONmate AI",
   };
+}
+
+/** AI 브리핑 생성 — POST /api/consults/{id}/briefing */
+export async function generateBriefing(scheduleId: string, type: ConsultType): Promise<Briefing> {
+  const res = await backendApi.generateBriefing(scheduleId);
+  return toBriefing(res, type, new Date().toISOString());
+}
+
+/** 마지막으로 만든 브리핑 — GET /api/consults/{id}/briefing (없으면 null) */
+export async function loadSavedBriefing(scheduleId: string, type: ConsultType): Promise<Briefing | null> {
+  try {
+    const res = await backendApi.getSavedBriefing(scheduleId);
+    return toBriefing(res, type, res.generatedAt ?? new Date().toISOString());
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,7 +1,7 @@
 /**
  * 인증 API
  * - POST /api/auth/login → accessToken
- * - GET /api/users/{loginId} → 내 정보
+ * - GET /api/users/me → 내 정보
  */
 import { backendApi, toUser } from "@/lib/backend";
 import { ApiError, clearRemoteCache } from "@/lib/http";
@@ -28,7 +28,7 @@ export async function login(id: string, password: string): Promise<LoginResult> 
   }
 
   try {
-    return { user: toUser(await backendApi.getUser(loginId, token)), token };
+    return { user: toUser(await backendApi.getMe(token)), token };
   } catch {
     // 내 정보 조회에 실패해도 로그인은 진행 (이름 자리에 아이디 표시)
     return { user: { id: loginId, name: loginId, branch: "", joinedYear: null }, token };

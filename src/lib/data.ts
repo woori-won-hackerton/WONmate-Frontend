@@ -6,11 +6,13 @@
  */
 import { useCallback, useMemo } from "react";
 import useSWR, { mutate, type SWRConfiguration } from "swr";
+import { loadSavedBriefing } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth";
 import { backendApi, toScheduleItem, type ConsultDto } from "@/lib/backend";
 import { CONSULT_RANGE } from "@/lib/config";
 import { ApiError } from "@/lib/http";
 import { useAppStore } from "@/lib/store";
-import type { Contract, ConsultType, Customer, RecordSummary, ScheduleItem } from "@/lib/types";
+import type { Contract, ConsultType, Customer, RecordSummary, ScheduleItem, Todo } from "@/lib/types";
 import { addDays } from "@/lib/utils";
 
 const SWR_OPTIONS: SWRConfiguration = {
@@ -55,6 +57,23 @@ export function useCustomer(id?: string): Remote<Customer | undefined> {
 }
 
 /* ------------------------------------------------------------------ */
+/* 고객 위키 (추가만 가능 — 백엔드에 수정 · 삭제 API 없음)                   */
+/* ------------------------------------------------------------------ */
+
+/** GET /api/customers/{id}/wiki — 위키 전체 내용 ("" = 아직 없음) */
+export function useCustomerWiki(customerId?: string): Remote<string> {
+  const q = useSWR(customerId ? ["wiki", customerId] : null, ([, cid]) => backendApi.getWiki(cid), SWR_OPTIONS);
+  return { data: q.data ?? "", isLoading: q.isLoading, error: q.error ?? null, reload: () => void q.mutate() };
+}
+
+/** POST /api/customers/{id}/wiki/entries — 기존 위키 뒤에 내용 추가 */
+export async function appendCustomerWiki(customerId: string, content: string) {
+  const next = await backendApi.appendWiki(customerId, content);
+  await mutate(["wiki", customerId], next, { revalidate: false });
+  return next;
+}
+
+/* ------------------------------------------------------------------ */
 /* 계약                                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -67,56 +86,56 @@ export function useContracts(customerId?: string): Remote<Contract[]> {
 /* 상담 일정                                                             */
 /* ------------------------------------------------------------------ */
 
-/** 백엔드 상담 일정 + 브라우저에 저장한 완료 표시를 합침 */
-function useMergeDone() {
-  const consultDone = useAppStore((s) => s.consultDone);
-  return useCallback(
-    (list: ConsultDto[]) => list.map((dto) => toScheduleItem(dto, !!consultDone[dto.consultId])).sort(byDateTime),
-    [consultDone],
-  );
-}
+const toItems = (list: ConsultDto[]) => list.map(toScheduleItem).sort(byDateTime);
 
 /** 특정 날짜의 상담 일정 */
 export function useConsultsOn(date: string): Remote<ScheduleItem[]> {
-  const merge = useMergeDone();
   const q = useSWR(["consults", date], ([, d]) => backendApi.getConsultsOn(d), SWR_OPTIONS);
-  const data = useMemo(() => merge(q.data ?? []), [merge, q.data]);
+  const data = useMemo(() => toItems(q.data ?? []), [q.data]);
   return { data, isLoading: q.isLoading, error: q.error ?? null, reload: () => void q.mutate() };
-}
-
-function rangeDates() {
-  const dates: string[] = [];
-  for (let d = -CONSULT_RANGE.pastDays; d <= CONSULT_RANGE.futureDays; d++) dates.push(addDays(d));
-  return dates;
 }
 
 /**
  * 최근 ~ 앞으로의 상담 일정 (상담 준비 드롭다운 · 고객별 다음 상담)
- * 기간 조회 API가 없어서 날짜별로 나눠 불러옴 (CONSULT_RANGE)
+ * GET /api/consults?from=&to= 한 번으로 불러옴 (범위: CONSULT_RANGE)
  */
 export function useUpcomingConsults(): Remote<ScheduleItem[]> {
-  const merge = useMergeDone();
   const from = addDays(-CONSULT_RANGE.pastDays);
+  const to = addDays(CONSULT_RANGE.futureDays);
+  const q = useSWR(["consults-range", from, to], ([, f, t]) => backendApi.getConsultsBetween(f, t), SWR_OPTIONS);
+  const data = useMemo(() => toItems(q.data ?? []), [q.data]);
+  return { data, isLoading: q.isLoading, error: q.error ?? null, reload: () => void q.mutate() };
+}
+
+/** 상담 일정 한 건 (범위 밖 일정 · AI 상담 요약 상세) */
+export function useConsult(id?: string | null): Remote<ScheduleItem | undefined> {
+  const q = useSWR(id ? ["consult", id] : null, ([, cid]) => backendApi.getConsult(cid), SWR_OPTIONS);
+  const data = useMemo(() => (q.data ? toScheduleItem(q.data) : undefined), [q.data]);
+  return { data, isLoading: q.isLoading, error: q.error ?? null, reload: () => void q.mutate() };
+}
+
+/**
+ * 완료된 상담 (최근 순) — AI 상담 요약 목록 · 고객별 이전 상담 기록
+ * GET /api/consults/records (customerId 있으면 해당 고객만)
+ */
+export function useCompletedConsults(customerId?: string): Remote<ScheduleItem[]> {
   const q = useSWR(
-    ["consults-range", from],
-    async () => (await Promise.all(rangeDates().map((d) => backendApi.getConsultsOn(d)))).flat(),
+    ["consult-records", customerId ?? "all"],
+    () => backendApi.getCompletedConsults(customerId),
     SWR_OPTIONS,
   );
-  const data = useMemo(() => merge(q.data ?? []), [merge, q.data]);
+  const data = useMemo(() => (q.data ?? []).map(toScheduleItem), [q.data]);
   return { data, isLoading: q.isLoading, error: q.error ?? null, reload: () => void q.mutate() };
 }
 
-/** 상담 일정 한 건 (범위 밖 일정을 링크로 들어왔을 때) */
-export function useConsult(id?: string | null): Remote<ScheduleItem | undefined> {
-  const merge = useMergeDone();
-  const q = useSWR(id ? ["consult", id] : null, ([, cid]) => backendApi.getConsult(cid), SWR_OPTIONS);
-  const data = useMemo(() => (q.data ? merge([q.data])[0] : undefined), [merge, q.data]);
-  return { data, isLoading: q.isLoading, error: q.error ?? null, reload: () => void q.mutate() };
-}
-
-/** 상담 일정 캐시 새로고침 */
+/** 상담 일정 · 완료 목록 캐시 새로고침 */
 function refreshConsults() {
   return mutate((key) => Array.isArray(key) && String(key[0]).startsWith("consult"));
+}
+
+/** 고객 목록 · 상세 캐시 새로고침 (최근 상담 · 상담 수가 바뀌었을 때) */
+function refreshCustomers() {
+  return mutate((key) => key === "customers" || (Array.isArray(key) && key[0] === "customer"));
 }
 
 export interface NewConsultInput {
@@ -128,29 +147,78 @@ export interface NewConsultInput {
 
 /** 상담 일정 추가 · 상담 완료 */
 export function useConsultActions() {
-  const finishConsult = useAppStore((s) => s.finishConsult);
+  const clearPrepDraft = useAppStore((s) => s.clearPrepDraft);
 
   /** POST /api/consults */
   const addConsult = useCallback(async (input: NewConsultInput): Promise<ScheduleItem> => {
     const dto = await backendApi.createConsult(input);
     await refreshConsults();
-    return toScheduleItem(dto, false);
+    return toScheduleItem(dto);
   }, []);
 
   /**
    * POST /api/consults/{id}/complete — 최종 메모를 저장하고 상담을 완료 (되돌릴 수 없음)
-   * 성공하면 AI 상담 요약 목록에 추가하고, 만든 record id를 반환
+   * 완료되면 AI 상담 요약 목록(/records)에 서버 기준으로 나타나요
    */
   const completeConsult = useCallback(
-    async (item: ScheduleItem, memo: string): Promise<string> => {
+    async (item: ScheduleItem, memo: string): Promise<void> => {
       await backendApi.completeConsult(item.id, memo);
       void mutate(["memo", item.id], { consultationId: Number(item.id), memo, memoUpdatedAt: null }, { revalidate: false });
-      return finishConsult(item, memo);
+      clearPrepDraft(item.id);
+      await Promise.all([refreshConsults(), refreshCustomers()]);
     },
-    [finishConsult],
+    [clearPrepDraft],
   );
 
   return { addConsult, completeConsult };
+}
+
+/* ------------------------------------------------------------------ */
+/* 할 일                                                                */
+/* ------------------------------------------------------------------ */
+
+const TODOS_KEY = "todos";
+
+/** GET /api/todos — 내 할 일 전체 (로그인 전에는 요청 안 함) */
+export function useTodos(): Remote<Todo[]> {
+  const loggedIn = useAuthStore((s) => !!s.token);
+  const q = useSWR(loggedIn ? TODOS_KEY : null, backendApi.getTodos, SWR_OPTIONS);
+  return { data: q.data ?? [], isLoading: q.isLoading, error: q.error ?? null, reload: () => void q.mutate() };
+}
+
+/** 할 일 추가 · 체크 */
+export function useTodoActions() {
+  const markTodoDone = useAppStore((s) => s.markTodoDone);
+
+  /** POST /api/todos */
+  const addTodo = useCallback(async (content: string) => {
+    const todo = await backendApi.createTodo(content);
+    await mutate<Todo[]>(TODOS_KEY, (list = []) => [...list, todo], { revalidate: false });
+    return todo;
+  }, []);
+
+  /** PATCH /api/todos/{id}/status — 화면은 먼저 바꾸고, 실패하면 되돌림 */
+  const toggleTodo = useCallback(
+    async (todo: Todo) => {
+      const done = !todo.done;
+      const apply = (value: boolean) =>
+        mutate<Todo[]>(TODOS_KEY, (list = []) => list.map((t) => (t.id === todo.id ? { ...t, done: value } : t)), {
+          revalidate: false,
+        });
+      await apply(done);
+      markTodoDone(todo.id, done);
+      try {
+        await backendApi.setTodoDone(todo.id, done);
+      } catch (e) {
+        await apply(!done);
+        markTodoDone(todo.id, !done);
+        throw e;
+      }
+    },
+    [markTodoDone],
+  );
+
+  return { addTodo, toggleTodo };
 }
 
 /* ------------------------------------------------------------------ */
@@ -199,9 +267,39 @@ export function useAiRecord(consultId?: string) {
   return { data: q.data ?? null, isLoading: q.isLoading };
 }
 
+/** PATCH /api/consults/{id}/ai-record — FC가 고친 AI 기록 저장 */
+export async function saveAiRecord(consultId: string, summary: RecordSummary) {
+  const saved = await backendApi.updateAiRecord(consultId, summary);
+  await mutate(["ai-record", consultId], saved, { revalidate: false });
+  return saved;
+}
+
+/** POST /api/consults/{id}/ai-record/confirm — 확정 (이후 수정 불가) */
+export async function confirmAiRecord(consultId: string) {
+  const confirmed = await backendApi.confirmAiRecord(consultId);
+  await mutate(["ai-record", consultId], confirmed, { revalidate: false });
+  await refreshConsults();
+  return confirmed;
+}
+
 /** POST /api/consults/{id}/ai-record */
 export async function generateAiRecord(consultId: string) {
   const summary = await backendApi.generateAiRecord(consultId);
   await mutate(["ai-record", consultId], summary, { revalidate: false });
+  await refreshConsults();
   return summary;
+}
+
+/* ------------------------------------------------------------------ */
+/* AI 브리핑                                                            */
+/* ------------------------------------------------------------------ */
+
+/** 마지막으로 만든 브리핑 (없으면 null) — 새로고침 · 다른 기기에서도 이어보기 */
+export function useSavedBriefing(consultId?: string, type?: ConsultType) {
+  const q = useSWR(
+    consultId && type ? ["briefing", consultId, type] : null,
+    ([, cid, t]) => loadSavedBriefing(cid, t as ConsultType),
+    SWR_OPTIONS,
+  );
+  return { data: q.data ?? null, isLoading: q.isLoading };
 }

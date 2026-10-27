@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BookUser, NotebookPen, Save } from "lucide-react";
+import { BookUser, NotebookPen, Plus, Save } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn, formatDateTime, inputClass } from "@/lib/utils";
@@ -10,9 +10,11 @@ type MemoTab = "wiki" | "consult";
 
 interface MemoPanelProps {
   customerName: string;
+  /** 고객 위키 전체 내용 (백엔드) */
   wiki: string;
-  wikiUpdatedAt?: string;
-  onWikiSave: (value: string) => void;
+  wikiLoading?: boolean;
+  /** 위키 뒤에 내용 추가 — 성공하면 true */
+  onWikiAppend: (value: string) => Promise<boolean>;
   memo: string;
   memoUpdatedAt?: string;
   onMemoSave: (value: string) => void;
@@ -20,34 +22,36 @@ interface MemoPanelProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-/** 상담 준비 우측 고정 메모 — 고객 위키 / 상담 메모 탭 (저장 버튼으로 저장) */
+/** 상담 준비 우측 고정 메모 — 고객 위키(추가만) / 상담 메모(저장) 탭 */
 export function MemoPanel({
   customerName,
   wiki,
-  wikiUpdatedAt,
-  onWikiSave,
+  wikiLoading,
+  onWikiAppend,
   memo,
   memoUpdatedAt,
   onMemoSave,
   onDirtyChange,
 }: MemoPanelProps) {
   const [tab, setTab] = useState<MemoTab>("consult");
-  const [wikiDraft, setWikiDraft] = useState(wiki);
+  const [wikiDraft, setWikiDraft] = useState("");
   const [memoDraft, setMemoDraft] = useState(memo);
+  const [appending, setAppending] = useState(false);
 
-  const wikiDirty = wikiDraft !== wiki;
+  const wikiDirty = wikiDraft.trim() !== "";
   const memoDirty = memoDraft !== memo;
   const isWiki = tab === "wiki";
-  const dirty = isWiki ? wikiDirty : memoDirty;
-  const updatedAt = isWiki ? wikiUpdatedAt : memoUpdatedAt;
 
   useEffect(() => {
     onDirtyChange?.(wikiDirty || memoDirty);
   }, [wikiDirty, memoDirty, onDirtyChange]);
 
-  const handleSave = () => {
-    if (isWiki) onWikiSave(wikiDraft.trim());
-    else onMemoSave(memoDraft.trim());
+  const handleAppend = async () => {
+    if (!wikiDirty) return;
+    setAppending(true);
+    const ok = await onWikiAppend(wikiDraft.trim());
+    setAppending(false);
+    if (ok) setWikiDraft("");
   };
 
   const tabs: { value: MemoTab; label: string; icon: typeof BookUser; changed: boolean }[] = [
@@ -75,32 +79,66 @@ export function MemoPanel({
         ))}
       </div>
 
-      <p className="mb-2 text-xs leading-relaxed text-muted">
-        {isWiki
-          ? `${customerName} 고객에 대해 계속 쌓아두는 메모예요. 다음 상담에서도 그대로 보여요.`
-          : "상담 준비와 상담 중 들은 내용을 적어요. 저장한 메모가 AI 상담 요약의 원문이 돼요."}
-      </p>
-      <textarea
-        value={isWiki ? wikiDraft : memoDraft}
-        onChange={(e) => (isWiki ? setWikiDraft(e.target.value) : setMemoDraft(e.target.value))}
-        rows={12}
-        placeholder={
-          isWiki
-            ? "예) 연락은 오후 4시 이후 선호\n자녀 어린이보험에 관심"
-            : "예) 월 보험료 부담 언급\n다음 주까지 증권 사진 받기"
-        }
-        className={cn(inputClass, "resize-y leading-relaxed")}
-      />
-
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <p className={cn("text-xs", dirty ? "font-semibold text-amber-600" : "text-muted")}>
-          {dirty ? "저장하지 않은 변경이 있어요" : updatedAt ? `저장됨 ${formatDateTime(updatedAt)}` : "아직 저장하지 않았어요"}
-        </p>
-        <Button size="sm" onClick={handleSave} disabled={!dirty}>
-          <Save className="size-3.5" />
-          {isWiki ? "위키 저장" : "메모 저장"}
-        </Button>
-      </div>
+      {isWiki ? (
+        <>
+          <p className="mb-2 text-xs leading-relaxed text-muted">
+            {customerName} 고객에 대해 계속 쌓아두는 메모예요. AI 브리핑에 참고되고, 추가한 내용은 수정 · 삭제할 수
+            없어요.
+          </p>
+          <div className="mb-2 max-h-56 overflow-y-auto rounded-xl bg-surface p-3 text-sm leading-relaxed text-ink">
+            {wikiLoading ? (
+              <span className="text-muted">불러오는 중…</span>
+            ) : wiki ? (
+              <p className="whitespace-pre-wrap">{wiki}</p>
+            ) : (
+              <span className="text-muted">아직 적어둔 고객 메모가 없어요.</span>
+            )}
+          </div>
+          <textarea
+            value={wikiDraft}
+            onChange={(e) => setWikiDraft(e.target.value)}
+            rows={4}
+            disabled={appending}
+            placeholder={"추가할 내용\n예) 연락은 오후 4시 이후 선호"}
+            className={cn(inputClass, "resize-y leading-relaxed")}
+          />
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className={cn("text-xs", wikiDirty ? "font-semibold text-amber-600" : "text-muted")}>
+              {wikiDirty ? "추가하지 않은 내용이 있어요" : "기존 내용 아래에 추가돼요"}
+            </p>
+            <Button size="sm" onClick={handleAppend} loading={appending} disabled={!wikiDirty}>
+              {!appending && <Plus className="size-3.5" />}
+              위키에 추가
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="mb-2 text-xs leading-relaxed text-muted">
+            상담 준비와 상담 중 들은 내용을 적어요. 저장한 메모가 AI 상담 요약의 원문이 돼요.
+          </p>
+          <textarea
+            value={memoDraft}
+            onChange={(e) => setMemoDraft(e.target.value)}
+            rows={12}
+            placeholder={"예) 월 보험료 부담 언급\n다음 주까지 증권 사진 받기"}
+            className={cn(inputClass, "resize-y leading-relaxed")}
+          />
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className={cn("text-xs", memoDirty ? "font-semibold text-amber-600" : "text-muted")}>
+              {memoDirty
+                ? "저장하지 않은 변경이 있어요"
+                : memoUpdatedAt
+                  ? `저장됨 ${formatDateTime(memoUpdatedAt)}`
+                  : "아직 저장하지 않았어요"}
+            </p>
+            <Button size="sm" onClick={() => onMemoSave(memoDraft.trim())} disabled={!memoDirty}>
+              <Save className="size-3.5" />
+              메모 저장
+            </Button>
+          </div>
+        </>
+      )}
     </Card>
   );
 }

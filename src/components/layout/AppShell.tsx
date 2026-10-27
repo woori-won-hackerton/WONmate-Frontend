@@ -8,8 +8,8 @@ import { NAV_ITEMS } from "@/constants/nav";
 import { useMounted } from "@/hooks/useMounted";
 import { useAuthStore, useCurrentUser } from "@/lib/auth";
 import { logout } from "@/lib/authApi";
+import { useTodos } from "@/lib/data";
 import { confirmDialog } from "@/lib/feedback";
-import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
 
@@ -102,7 +102,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function usePendingTasks() {
   const mounted = useMounted();
-  const pending = useAppStore((s) => s.schedule.filter((i) => i.kind === "task" && !i.done).length);
+  const { data: todos } = useTodos();
+  const pending = todos.filter((t) => !t.done).length;
   return mounted ? pending : 0;
 }
 

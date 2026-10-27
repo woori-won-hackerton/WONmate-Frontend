@@ -7,24 +7,23 @@ import { TaskCard } from "@/components/home/TaskCard";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
 import { useCurrentUser } from "@/lib/auth";
-import { useConsultsOn, useCustomerLookup } from "@/lib/data";
-import { useAppStore } from "@/lib/store";
+import { useConsultsOn, useCustomerLookup, useTodos } from "@/lib/data";
 import { CONSULT_TYPE_LABEL } from "@/lib/types";
 import { cn, formatDate, toLocalISODate } from "@/lib/utils";
 
 export default function HomePage() {
   const mounted = useMounted();
-  const schedule = useAppStore((s) => s.schedule);
   const user = useCurrentUser();
   const today = toLocalISODate();
   const { data: todays, isLoading } = useConsultsOn(today);
   const customerOf = useCustomerLookup();
+  const { data: todos } = useTodos();
 
   if (!mounted || isLoading) return <LoadingBlock />;
 
   const done = todays.filter((i) => i.done).length;
   const remaining = todays.length - done;
-  const tasks = schedule.filter((i) => i.kind === "task" && !i.done && i.date <= today);
+  const pendingTodos = todos.filter((t) => !t.done).length;
   const next = todays.find((i) => !i.done);
   const nextCustomerName = next ? (customerOf(next.customerId)?.name ?? next.customerName) : undefined;
   const progress = todays.length ? Math.round((done / todays.length) * 100) : 0;
@@ -33,7 +32,7 @@ export default function HomePage() {
     { label: "오늘 상담", value: todays.length, icon: CalendarCheck2, tone: "bg-brand-50 text-brand-600" },
     { label: "완료", value: done, icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-600" },
     { label: "남은 상담", value: remaining, icon: Clock3, tone: "bg-amber-50 text-amber-600" },
-    { label: "오늘 할 일", value: tasks.length, icon: ListTodo, tone: "bg-sky-50 text-sky-600" },
+    { label: "남은 할 일", value: pendingTodos, icon: ListTodo, tone: "bg-sky-50 text-sky-600" },
   ];
 
   return (

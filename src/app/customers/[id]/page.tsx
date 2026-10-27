@@ -15,8 +15,7 @@ import { LoadError } from "@/components/ui/LoadError";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
 import { ApiError } from "@/lib/http";
-import { useContracts, useCustomer, useUpcomingConsults } from "@/lib/data";
-import { useAppStore } from "@/lib/store";
+import { useCompletedConsults, useContracts, useCustomer, useUpcomingConsults } from "@/lib/data";
 import { CONSULT_TYPE_LABEL, RECORD_STATUS_LABEL } from "@/lib/types";
 import { formatAge, formatDate, toLocalISODate } from "@/lib/utils";
 
@@ -34,11 +33,11 @@ function InfoTile({ label, value }: { label: string; value: string | null }) {
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const mounted = useMounted();
-  const records = useAppStore((s) => s.records);
   const [dialogOpen, setDialogOpen] = useState(false);
   const { data: customer, isLoading, error, reload } = useCustomer(id);
   const contractsQuery = useContracts(customer?.id);
   const { data: consults } = useUpcomingConsults();
+  const { data: history, isLoading: historyLoading } = useCompletedConsults(id);
 
   if (!mounted || isLoading) return <LoadingBlock />;
 
@@ -60,7 +59,6 @@ export default function CustomerDetailPage() {
 
   const today = toLocalISODate();
   const contracts = contractsQuery.data;
-  const history = records.filter((r) => r.customerId === customer.id).sort((a, b) => b.date.localeCompare(a.date));
   const nextConsult = consults
     .filter((i) => i.customerId === customer.id && !i.done && i.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""))[0];
@@ -135,8 +133,14 @@ export default function CustomerDetailPage() {
       </Card>
 
       <Card>
-        <CardHeader icon={FileText} title="이전 상담 기록" />
-        {history.length === 0 ? (
+        <CardHeader
+          icon={FileText}
+          title="이전 상담 기록"
+          right={!historyLoading && <span className="text-sm text-muted">{history.length}건</span>}
+        />
+        {historyLoading ? (
+          <p className="py-6 text-center text-sm text-muted">불러오는 중…</p>
+        ) : history.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted">아직 상담 기록이 없어요.</p>
         ) : (
           <ul className="-mx-2 space-y-1">
@@ -154,12 +158,14 @@ export default function CustomerDetailPage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge tone="brand">{CONSULT_TYPE_LABEL[r.type]}</Badge>
-                      <Badge tone={r.status === "confirmed" ? "green" : "sky"}>{RECORD_STATUS_LABEL[r.status]}</Badge>
+                      {r.consultType && <Badge tone="brand">{CONSULT_TYPE_LABEL[r.consultType]}</Badge>}
+                      <Badge
+                        tone={r.recordStatus === "confirmed" ? "green" : r.recordStatus === "ai_draft" ? "sky" : "gray"}
+                      >
+                        {RECORD_STATUS_LABEL[r.recordStatus ?? "memo"]}
+                      </Badge>
                     </div>
-                    <p className="mt-1 truncate text-sm text-ink">
-                      {(r.summary?.needs || r.memo || "메모 없음").split("\n")[0].replace(/^•\s*/, "")}
-                    </p>
+                    <p className="mt-1 truncate text-sm text-sub">{r.time} 상담</p>
                   </div>
                   <ChevronRight className="size-5 shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-brand-600" />
                 </Link>

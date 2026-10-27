@@ -3,28 +3,51 @@
 import { useState } from "react";
 import { Check, ListTodo, Plus } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { LoadError } from "@/components/ui/LoadError";
+import { useTodoActions, useTodos } from "@/lib/data";
+import { toast } from "@/lib/feedback";
 import { useAppStore } from "@/lib/store";
+import type { Todo } from "@/lib/types";
 import { cn, inputClass, toLocalISODate } from "@/lib/utils";
 
-/** 홈 우측: 해야 할 일 — 제목 입력하고 체크만 하는 단순 체크리스트 */
+const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
+
+/** 홈 우측: 해야 할 일 — 입력하고 체크만 하는 단순 체크리스트 (백엔드 /api/todos) */
 export function TaskCard() {
-  const schedule = useAppStore((s) => s.schedule);
-  const toggle = useAppStore((s) => s.toggleScheduleItem);
-  const addItem = useAppStore((s) => s.addScheduleItem);
+  const { data: todos, isLoading, error, reload } = useTodos();
+  const { addTodo, toggleTodo } = useTodoActions();
+  const todoDoneOn = useAppStore((s) => s.todoDoneOn);
   const [title, setTitle] = useState("");
+  const [adding, setAdding] = useState(false);
 
   const today = toLocalISODate();
   // 안 끝난 할 일 전부 + 오늘 체크한 할 일(실수로 눌렀을 때 되돌릴 수 있게)
-  const tasks = schedule
-    .filter((i) => i.kind === "task" && (!i.done || i.date === today))
-    .sort((a, b) => Number(a.done) - Number(b.done) || a.date.localeCompare(b.date));
+  const tasks = todos
+    .filter((t) => !t.done || todoDoneOn[t.id] === today)
+    .sort((a, b) => Number(a.done) - Number(b.done));
   const pending = tasks.filter((t) => !t.done).length;
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
-    addItem({ kind: "task", title: title.trim(), date: today, done: false });
-    setTitle("");
+    const content = title.trim();
+    if (!content || adding) return;
+    setAdding(true);
+    try {
+      await addTodo(content);
+      setTitle("");
+    } catch (err) {
+      toast.error(errorText(err, "할 일을 추가하지 못했어요"));
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleToggle = async (todo: Todo) => {
+    try {
+      await toggleTodo(todo);
+    } catch (err) {
+      toast.error(errorText(err, "할 일 상태를 바꾸지 못했어요"));
+    }
   };
 
   return (
@@ -44,19 +67,24 @@ export function TaskCard() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="할 일을 입력하세요"
+          disabled={adding}
           className={inputClass}
         />
         <button
           type="submit"
           aria-label="할 일 추가"
-          disabled={!title.trim()}
+          disabled={!title.trim() || adding}
           className="grid size-[46px] shrink-0 place-items-center rounded-2xl bg-brand-600 text-white shadow-float transition active:scale-95 disabled:bg-brand-200 disabled:shadow-none"
         >
           <Plus className="size-5" />
         </button>
       </form>
 
-      {tasks.length === 0 ? (
+      {isLoading ? (
+        <p className="py-8 text-center text-sm text-muted">불러오는 중…</p>
+      ) : error ? (
+        <LoadError error={error} onRetry={reload} title="할 일을 불러오지 못했어요" />
+      ) : tasks.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted">남은 할 일이 없어요 🎉</p>
       ) : (
         <ul className="-mx-2">
@@ -64,7 +92,7 @@ export function TaskCard() {
             <li key={task.id}>
               <button
                 type="button"
-                onClick={() => toggle(task.id)}
+                onClick={() => handleToggle(task)}
                 className="flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left transition hover:bg-gray-50"
               >
                 <span
@@ -76,7 +104,7 @@ export function TaskCard() {
                   <Check className="size-3.5" strokeWidth={3} />
                 </span>
                 <span className={cn("text-[15px] text-ink", task.done && "text-muted line-through")}>
-                  {task.title}
+                  {task.content}
                 </span>
               </button>
             </li>

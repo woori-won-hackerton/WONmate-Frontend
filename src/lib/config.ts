@@ -15,7 +15,7 @@ export const BACKEND_READY = {
 } as const;
 
 /**
- * 상담 일정 기간 조회 API가 없어서, 날짜별 조회(GET /api/consults?date=)를 이 범위만큼 반복해서 불러와요
- * (상담 준비 드롭다운 · 고객별 다음 상담에 사용)
+ * 상담 준비 드롭다운 · 고객별 다음 상담에 쓰는 상담 일정 범위
+ * (GET /api/consults?from=&to= 로 한 번에 불러와요. 백엔드 최대 92일)
  */
 export const CONSULT_RANGE = { pastDays: 3, futureDays: 14 } as const;

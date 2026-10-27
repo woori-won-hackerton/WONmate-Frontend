@@ -15,6 +15,7 @@ import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
 import { generateBriefing } from "@/lib/api";
 import {
+  appendCustomerWiki,
   saveConsultMemo,
   useConsult,
   useConsultActions,
@@ -22,11 +23,13 @@ import {
   useContracts,
   useCustomer,
   useCustomerLookup,
+  useCustomerWiki,
+  useSavedBriefing,
   useUpcomingConsults,
 } from "@/lib/data";
 import { confirmDialog, toast } from "@/lib/feedback";
 import { composeMemo, useAppStore } from "@/lib/store";
-import { ACTIVE_CONTRACT_STATUSES, CONSULT_TYPE_LABEL, type PrepDraft } from "@/lib/types";
+import { ACTIVE_CONTRACT_STATUSES, CONSULT_TYPE_LABEL, type ExpectedQA, type PrepDraft } from "@/lib/types";
 import { formatDate, inputClass, toLocalISODate } from "@/lib/utils";
 import { MemoPanel } from "./MemoPanel";
 import { BriefingCard, ExpectedQuestions, RequiredChecks } from "./PrepSections";
@@ -40,9 +43,7 @@ export function PrepWorkspace() {
   const mounted = useMounted();
 
   const drafts = useAppStore((s) => s.prepDrafts);
-  const wiki = useAppStore((s) => s.wiki);
   const savePrepDraft = useAppStore((s) => s.savePrepDraft);
-  const saveWiki = useAppStore((s) => s.saveWiki);
   const { completeConsult } = useConsultActions();
 
   const [picked, setPicked] = useState<string | null>(null);
@@ -78,6 +79,13 @@ export function PrepWorkspace() {
   const { data: customer } = useCustomer(item?.customerId);
   const contractsQuery = useContracts(item?.customerId);
   const memoQuery = useConsultMemo(item?.id);
+  const wikiQuery = useCustomerWiki(item?.customerId);
+  // 이 브라우저에 브리핑이 없으면 서버에 저장된 마지막 브리핑을 불러옴 (새로고침 · 다른 기기)
+  const hasLocalBriefing = !!(item && drafts[item.id]?.briefing);
+  const savedBriefing = useSavedBriefing(
+    item && !hasLocalBriefing ? item.id : undefined,
+    item?.consultType ?? "review",
+  );
 
   if (!mounted || upcoming.isLoading) return <LoadingBlock />;
   if (upcoming.error) {
@@ -86,9 +94,13 @@ export function PrepWorkspace() {
 
   const type = item?.consultType ?? "review";
   const draft = item ? drafts[item.id] : undefined;
+  /** 화면에 보여줄 브리핑: 이 브라우저에서 만든 것 → 없으면 서버에 저장된 마지막 브리핑 */
+  const briefing = draft?.briefing ?? savedBriefing.data;
+  const qa: ExpectedQA[] = draft?.briefing
+    ? draft.qa
+    : (savedBriefing.data?.expectedQuestions ?? []).map((q) => ({ question: q, answerMemo: "" }));
   const customerId = item?.customerId;
   const customerName = customer?.name ?? item?.customerName ?? "고객";
-  const wikiDoc = customerId ? wiki[customerId] : undefined;
 
   const options = consults.filter((i) => !i.done || i.id === scheduleId);
   const paramCustomerName = paramCustomerId ? customerOf(paramCustomerId)?.name : undefined;
@@ -117,7 +129,7 @@ export function PrepWorkspace() {
     setLoading(true);
     try {
       const briefing = await generateBriefing(item.id, type);
-      const prevMemos = new Map((draft?.qa ?? []).map((q) => [q.question, q.answerMemo]));
+      const prevMemos = new Map(qa.map((q) => [q.question, q.answerMemo]));
       update({
         type,
         briefing,
@@ -131,8 +143,8 @@ export function PrepWorkspace() {
   };
 
   const handleSaveAnswer = (index: number, answerMemo: string) => {
-    const qa = (draft?.qa ?? []).map((q, i) => (i === index ? { ...q, answerMemo } : q));
-    update({ qa });
+    const next = qa.map((q, i) => (i === index ? { ...q, answerMemo } : q));
+    update({ briefing, qa: next });
     toast.success("답변 메모를 저장했어요");
   };
 
@@ -152,7 +164,7 @@ export function PrepWorkspace() {
     const ok = await confirmDialog({
       title: "상담을 완료할까요?",
       description: memoDirty
-        ? "저장하지 않은 메모가 있어요. 저장하지 않은 내용은 AI 상담 요약에 들어가지 않아요. 완료하면 되돌릴 수 없어요."
+        ? "저장하지 않은 메모나 위키에 추가하지 않은 내용이 있어요. 저장하지 않은 내용은 AI 상담 요약에 들어가지 않아요. 완료하면 되돌릴 수 없어요."
         : "저장한 상담 메모와 답변 메모가 AI 상담 요약으로 넘어가요. 완료하면 되돌릴 수 없어요.",
       confirmText: "상담 완료",
     });
@@ -160,9 +172,9 @@ export function PrepWorkspace() {
     setFinishing(true);
     try {
       // 저장한 상담 메모 + 답변 메모를 최종 메모로 보내고 상담 완료 (POST /complete)
-      const id = await completeConsult(item, composeMemo(memo, draft));
+      await completeConsult(item, composeMemo(memo, draft));
       toast.success(`${customerName} 고객 상담을 완료했어요`);
-      router.push(`/records/${id}`);
+      router.push(`/records/${item.id}`);
     } catch (e) {
       toast.error(errorText(e, "상담을 완료하지 못했어요. 잠시 후 다시 시도해 주세요."));
       setFinishing(false);
@@ -199,7 +211,7 @@ export function PrepWorkspace() {
             </Button>
             <Button size="lg" onClick={handleGenerate} loading={loading} disabled={!item} className="flex-1">
               {!loading && <Sparkles className="size-4" />}
-              {draft?.briefing ? "AI 브리핑 다시 만들기" : "AI 브리핑 생성"}
+              {briefing ? "AI 브리핑 다시 만들기" : "AI 브리핑 생성"}
             </Button>
           </div>
         </div>
@@ -228,8 +240,8 @@ export function PrepWorkspace() {
 
             {loading ? (
               <AiProgress steps={AI_STEPS.briefing} />
-            ) : draft?.briefing ? (
-              <BriefingCard briefing={draft.briefing} />
+            ) : briefing ? (
+              <BriefingCard briefing={briefing} />
             ) : (
               <Card className="border-dashed text-center">
                 <div className="mx-auto mb-3 grid size-12 place-items-center rounded-2xl bg-brand-50 text-brand-600">
@@ -249,8 +261,8 @@ export function PrepWorkspace() {
               />
             </Card>
 
-            {draft?.briefing && !loading && (
-              <ExpectedQuestions key={draft.briefing.generatedAt} qa={draft.qa} onSave={handleSaveAnswer} />
+            {briefing && !loading && (
+              <ExpectedQuestions key={briefing.generatedAt} qa={qa} onSave={handleSaveAnswer} />
             )}
           </div>
 
@@ -260,12 +272,18 @@ export function PrepWorkspace() {
               // 서버 메모를 다 불러온 뒤 입력칸을 새로 채우기 위해 key에 포함
               key={`${item.id}-${memoQuery.ready}`}
               customerName={customerName}
-              wiki={wikiDoc?.content ?? ""}
-              wikiUpdatedAt={wikiDoc?.updatedAt}
-              onWikiSave={(value) => {
-                if (!customerId) return;
-                saveWiki(customerId, value);
-                toast.success("고객 위키를 저장했어요");
+              wiki={wikiQuery.data}
+              wikiLoading={wikiQuery.isLoading}
+              onWikiAppend={async (value) => {
+                if (!customerId) return false;
+                try {
+                  await appendCustomerWiki(customerId, value);
+                  toast.success("고객 위키에 추가했어요");
+                  return true;
+                } catch (e) {
+                  toast.error(errorText(e, "고객 위키에 추가하지 못했어요"));
+                  return false;
+                }
               }}
               memo={memo}
               memoUpdatedAt={memoUpdatedAt || undefined}

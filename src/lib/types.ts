@@ -21,12 +21,17 @@ export interface Customer {
   region: string | null;
   /** 장애 유무. null = 확인되지 않음 */
   disability: string | null;
+  /** 가장 최근 완료한 상담 날짜 (YYYY-MM-DD). 없으면 null */
+  lastConsultedAt: string | null;
+  /** 완료한 상담 수 */
+  completedConsultCount: number;
 }
 
-/** 고객 위키: 상담과 상관없이 고객에 대해 계속 쌓아두는 메모 */
-export interface WikiDoc {
+/** 홈 '해야 할 일' (백엔드 /api/todos) */
+export interface Todo {
+  id: string;
   content: string;
-  updatedAt: string;
+  done: boolean;
 }
 
 export type ContractStatus = "유지" | "실효" | "해지" | "만기";
@@ -74,7 +79,7 @@ export interface PrepDraft {
 export type RecordStatus = "memo" | "ai_draft" | "confirmed";
 
 export const RECORD_STATUS_LABEL: Record<RecordStatus, string> = {
-  memo: "메모 저장",
+  memo: "요약 전",
   ai_draft: "AI 초안",
   confirmed: "기록 확정",
 };
@@ -87,24 +92,6 @@ export interface RecordSummary {
   nextActions: string;
 }
 
-/**
- * AI 상담 요약 — 상담 완료 시 이 브라우저에 목록용으로 저장
- * (AI 초안은 백엔드 POST/GET /api/consults/{scheduleId}/ai-record)
- */
-export interface ConsultationRecord {
-  id: string;
-  /** 백엔드 상담 id */
-  scheduleId: string;
-  customerId: string;
-  type: ConsultType;
-  date: string;
-  memo: string;
-  summary: RecordSummary | null;
-  status: RecordStatus;
-  confirmedBy?: string;
-  confirmedAt?: string;
-}
-
 export interface ScheduleItem {
   id: string;
   kind: "consult" | "task";
@@ -115,7 +102,10 @@ export interface ScheduleItem {
   /** 고객 이름 (백엔드 상담 일정 응답에 포함) */
   customerName?: string;
   consultType?: ConsultType;
+  /** 상담 완료 여부 (백엔드 status === "completed") */
   done: boolean;
+  /** AI 상담 요약 진행 상태 (완료된 상담만 의미 있음) */
+  recordStatus?: RecordStatus;
 }
 
 /** 상품 대분류 (지식 챗봇 상품 선택용) */

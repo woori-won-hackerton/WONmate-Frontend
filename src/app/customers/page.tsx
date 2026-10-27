@@ -10,7 +10,6 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
 import { useContracts, useCustomers, useUpcomingConsults } from "@/lib/data";
-import { useAppStore } from "@/lib/store";
 import { ACTIVE_CONTRACT_STATUSES, type Customer, type ScheduleItem } from "@/lib/types";
 import { cn, formatAge, formatDate, inputClass, toLocalISODate } from "@/lib/utils";
 
@@ -67,13 +66,8 @@ export default function CustomersPage() {
 
 function CustomerCard({ customer: c, nextConsult }: { customer: Customer; nextConsult?: ScheduleItem }) {
   const { data: contracts, isLoading } = useContracts(c.id);
-  const records = useAppStore((s) => s.records);
 
   const activeCount = contracts.filter((k) => ACTIVE_CONTRACT_STATUSES.includes(k.status)).length;
-  const mine = records.filter((r) => r.customerId === c.id);
-  const recordCount = mine.filter((r) => r.status === "confirmed").length;
-  // 최근 상담 = 이 브라우저에서 완료한 상담 중 가장 최근 날짜
-  const lastConsultedAt = mine.map((r) => r.date).sort().pop();
 
   return (
     <li>
@@ -115,12 +109,12 @@ function CustomerCard({ customer: c, nextConsult }: { customer: Customer; nextCo
           </div>
           <div>
             <dt className="text-[11px] text-muted">상담 기록</dt>
-            <dd className="tabular mt-0.5 text-sm font-bold text-ink">{recordCount}건</dd>
+            <dd className="tabular mt-0.5 text-sm font-bold text-ink">{c.completedConsultCount}건</dd>
           </div>
           <div>
             <dt className="text-[11px] text-muted">최근 상담</dt>
             <dd className="tabular mt-0.5 text-sm font-bold text-ink">
-              {lastConsultedAt ? formatDate(lastConsultedAt).slice(5) : "-"}
+              {c.lastConsultedAt ? formatDate(c.lastConsultedAt).slice(5) : "-"}
             </dd>
           </div>
         </dl>

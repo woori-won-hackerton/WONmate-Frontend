@@ -2,20 +2,28 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { CheckCircle2, ChevronLeft, FileCheck2, FileX, NotebookPen, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, ChevronLeft, FileCheck2, FileX, NotebookPen, Save, Sparkles } from "lucide-react";
 import { AI_STEPS, AiProgress } from "@/components/ui/AiProgress";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadError } from "@/components/ui/LoadError";
 import { Notice } from "@/components/ui/Notice";
 import { LoadingBlock } from "@/components/ui/Skeleton";
 import { useMounted } from "@/hooks/useMounted";
-import { useCurrentUser } from "@/lib/auth";
+import {
+  confirmAiRecord,
+  generateAiRecord,
+  saveAiRecord,
+  useAiRecord,
+  useConsult,
+  useConsultMemo,
+  useCustomerLookup,
+} from "@/lib/data";
 import { confirmDialog, toast } from "@/lib/feedback";
-import { generateAiRecord, useAiRecord, useCustomerLookup } from "@/lib/data";
-import { useAppStore } from "@/lib/store";
+import { ApiError } from "@/lib/http";
 import { CONSULT_TYPE_LABEL, type RecordSummary } from "@/lib/types";
 import { cn, formatDate, inputClass } from "@/lib/utils";
 
@@ -27,28 +35,32 @@ const FIELDS: { key: keyof RecordSummary; label: string; hint: string }[] = [
   { key: "nextActions", label: "다음 행동", hint: "누가, 언제까지, 무엇을" },
 ];
 
+const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
+
+/** AI 상담 요약 상세 — URL의 id = 상담 id */
 export default function RecordDetailPage() {
   const { id } = useParams<{ id: string }>();
   const mounted = useMounted();
-  const record = useAppStore((s) => s.records.find((r) => r.id === id));
-  const updateRecord = useAppStore((s) => s.updateRecord);
-  const confirmRecord = useAppStore((s) => s.confirmRecord);
-  const user = useCurrentUser();
   const customerOf = useCustomerLookup();
 
+  const consultQuery = useConsult(id);
+  const consult = consultQuery.data;
+  const memoQuery = useConsultMemo(consult?.done ? id : undefined);
+  const aiRecord = useAiRecord(consult?.done ? id : undefined);
+
+  /** 화면에서 고친 항목 (저장 전) */
+  const [edits, setEdits] = useState<Partial<RecordSummary>>({});
   const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // 서버에 이미 만들어진 AI 기록이 있으면 (다른 기기에서 만든 경우 등) 가져와서 채움
-  const serverRecord = useAiRecord(record && !record.summary ? record.scheduleId : undefined);
-  useEffect(() => {
-    if (record && !record.summary && serverRecord.data) {
-      updateRecord(record.id, { summary: serverRecord.data, status: "ai_draft" });
-    }
-  }, [record, serverRecord.data, updateRecord]);
+  if (!mounted || consultQuery.isLoading) return <LoadingBlock />;
 
-  if (!mounted) return <LoadingBlock />;
+  const notFound = consultQuery.error instanceof ApiError && [403, 404].includes(consultQuery.error.status);
+  if (consultQuery.error && !notFound) {
+    return <LoadError error={consultQuery.error} onRetry={consultQuery.reload} title="상담 기록을 불러오지 못했어요" />;
+  }
 
-  if (!record) {
+  if (!consult) {
     return (
       <EmptyState
         icon={FileX}
@@ -58,20 +70,51 @@ export default function RecordDetailPage() {
     );
   }
 
-  const customer = customerOf(record.customerId);
-  const isConfirmed = record.status === "confirmed";
-  const summary = record.summary;
+  if (!consult.done) {
+    return (
+      <EmptyState
+        icon={FileX}
+        title="아직 완료되지 않은 상담이에요"
+        description="상담 준비에서 ‘상담 완료’를 누르면 AI 상담 요약을 만들 수 있어요."
+        action={
+          <Link href={`/prep?scheduleId=${consult.id}`} className={buttonClass("secondary")}>
+            상담 준비로
+          </Link>
+        }
+      />
+    );
+  }
+
+  const customerName = customerOf(consult.customerId)?.name ?? consult.customerName ?? "알 수 없음";
+  const isConfirmed = consult.recordStatus === "confirmed";
+  const memo = memoQuery.memo ?? "";
+  const summary: RecordSummary | null = aiRecord.data ? { ...aiRecord.data, ...edits } : null;
+  const dirty = Object.keys(edits).length > 0;
 
   const handleDraft = async () => {
     setGenerating(true);
     try {
-      const next = await generateAiRecord(record.scheduleId);
-      updateRecord(record.id, { summary: next, status: "ai_draft" });
+      await generateAiRecord(consult.id);
+      setEdits({});
       toast.success("AI 초안을 만들었어요. 내용을 확인해 주세요");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "AI 초안을 만들지 못했어요. 잠시 후 다시 시도해 주세요");
+      toast.error(errorText(e, "AI 초안을 만들지 못했어요. 잠시 후 다시 시도해 주세요"));
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      await saveAiRecord(consult.id, summary);
+      setEdits({});
+      toast.success("수정한 내용을 저장했어요");
+    } catch (e) {
+      toast.error(errorText(e, "저장하지 못했어요"));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -83,8 +126,17 @@ export default function RecordDetailPage() {
       confirmText: "확정하기",
     });
     if (!ok) return;
-    confirmRecord(record.id, user.name);
-    toast.success("AI 상담 요약을 확정했어요");
+    setSaving(true);
+    try {
+      if (dirty) await saveAiRecord(consult.id, summary); // 고친 내용 먼저 저장
+      await confirmAiRecord(consult.id);
+      setEdits({});
+      toast.success("AI 상담 요약을 확정했어요");
+    } catch (e) {
+      toast.error(errorText(e, "확정하지 못했어요"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -98,10 +150,13 @@ export default function RecordDetailPage() {
       <Card>
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-extrabold tracking-tight text-ink">{customer?.name ?? "알 수 없음"} 고객</h1>
-            <Badge tone="brand">{CONSULT_TYPE_LABEL[record.type]}</Badge>
+            <h1 className="text-2xl font-extrabold tracking-tight text-ink">{customerName} 고객</h1>
+            {consult.consultType && <Badge tone="brand">{CONSULT_TYPE_LABEL[consult.consultType]}</Badge>}
+            {isConfirmed && <Badge tone="green">기록 확정</Badge>}
           </div>
-          <p className="mt-1 text-sm text-muted">{formatDate(record.date, true)} 상담</p>
+          <p className="mt-1 text-sm text-muted">
+            {formatDate(consult.date, true)} {consult.time} 상담
+          </p>
         </div>
       </Card>
 
@@ -116,7 +171,7 @@ export default function RecordDetailPage() {
         <Card>
           <CardHeader icon={NotebookPen} title="상담 완료 때 저장한 메모" right={<Badge>원문</Badge>} />
           <pre className="max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-surface p-4 font-sans text-sm leading-relaxed text-ink">
-            {record.memo || "메모 없음"}
+            {memoQuery.ready ? memo || "메모 없음" : "불러오는 중…"}
           </pre>
           {!isConfirmed && !summary && (
             <Button
@@ -124,13 +179,13 @@ export default function RecordDetailPage() {
               variant="secondary"
               onClick={handleDraft}
               loading={generating}
-              disabled={!record.memo.trim() || serverRecord.isLoading}
+              disabled={!memo.trim() || aiRecord.isLoading}
             >
               {!generating && <Sparkles className="size-4" />}
               AI 초안 생성
             </Button>
           )}
-          {!record.memo.trim() && (
+          {memoQuery.ready && !memo.trim() && (
             <p className="mt-2 text-xs text-muted">저장된 메모가 없어서 AI 초안을 만들 수 없어요.</p>
           )}
         </Card>
@@ -143,6 +198,8 @@ export default function RecordDetailPage() {
           />
           {generating ? (
             <AiProgress steps={AI_STEPS.record} />
+          ) : aiRecord.isLoading ? (
+            <p className="py-10 text-center text-sm text-muted">불러오는 중…</p>
           ) : !summary ? (
             <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-line text-center text-sm text-muted">
               왼쪽 메모로 AI 초안을 만들어 주세요.
@@ -162,11 +219,10 @@ export default function RecordDetailPage() {
                   ) : (
                     <textarea
                       value={summary[f.key]}
-                      onChange={(e) =>
-                        updateRecord(record.id, { summary: { ...summary, [f.key]: e.target.value } })
-                      }
+                      onChange={(e) => setEdits((prev) => ({ ...prev, [f.key]: e.target.value }))}
                       rows={3}
                       placeholder={f.hint}
+                      disabled={saving}
                       className={cn(inputClass, "resize-y")}
                     />
                   )}
@@ -174,11 +230,17 @@ export default function RecordDetailPage() {
               ))}
             </div>
           )}
-          {!isConfirmed && (
-            <Button className="mt-5 w-full" size="lg" onClick={handleConfirm} disabled={!summary || generating}>
-              <CheckCircle2 className="size-4" />
-              기록 확정
-            </Button>
+          {!isConfirmed && summary && (
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <Button variant="outline" size="lg" onClick={handleSave} loading={saving} disabled={!dirty || generating}>
+                {!saving && <Save className="size-4" />}
+                {dirty ? "수정 내용 저장" : "저장됨"}
+              </Button>
+              <Button size="lg" onClick={handleConfirm} disabled={saving || generating}>
+                <CheckCircle2 className="size-4" />
+                기록 확정
+              </Button>
+            </div>
           )}
         </Card>
       </div>
