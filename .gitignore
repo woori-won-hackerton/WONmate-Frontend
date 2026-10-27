@@ -1,0 +1,46 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# next.js build output
+.next/
+out/
+build/
+dist/
+
+# testing
+coverage/
+
+# env (키·비밀값은 절대 커밋 금지. 예시 파일만 공유)
+.env
+.env.*
+!.env.example
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# caches
+.eslintcache
+.turbo/
+.vercel/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

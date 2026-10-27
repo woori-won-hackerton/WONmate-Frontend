@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+
+  /* 브랜드 블루 */
+  --color-brand-50: #eef6fc;
+  --color-brand-100: #d8eaf7;
+  --color-brand-200: #b0d4ef;
+  --color-brand-300: #7ab7e2;
+  --color-brand-400: #3f94cf;
+  --color-brand-500: #0f7cc2;
+  --color-brand-600: #0067ac;
+  --color-brand-700: #00548d;
+  --color-brand-800: #00406c;
+  --color-brand-900: #002d4d;
+  --color-sky-accent: #00a0e2;
+
+  /* 중립색 */
+  --color-surface: #f2f4f8;
+  --color-line: #e8ebf0;
+  --color-ink: #191f28;
+  --color-sub: #4e5968;
+  --color-muted: #8b95a1;
+
+  /* 그림자 (shadow-card, shadow-float) */
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.03), 0 6px 20px rgb(16 24 40 / 0.04);
+  --shadow-float: 0 8px 20px rgb(0 103 172 / 0.22);
+
+  /* 등장 애니메이션 (animate-rise) */
+  --animate-rise: rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* 둥둥 떠 있는 카드 (animate-float) */
+  --animate-float: float 6s ease-in-out infinite;
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  /* 로그인 실패 시 흔들림 (animate-shake) */
+  --animate-shake: shake 0.4s ease-in-out;
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    20%,
+    60% {
+      transform: translateX(-6px);
+    }
+    40%,
+    80% {
+      transform: translateX(6px);
+    }
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  letter-spacing: -0.01em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 숫자 폭 고정 (시간·금액이 흔들리지 않게) */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* 모바일 하단 탭바가 아이폰 홈 인디케이터를 가리지 않도록 */
+@utility pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
